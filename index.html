@@ -164,8 +164,6 @@
         let lightTimer = null;
         let goTimer = null;
         const HUMAN_MIN_REACTION = 100;
-        let isTouchEvent = false;
-        const TOUCH_DELAY = 50;
 
         function fullReset() {
             testActive = false;
@@ -209,10 +207,14 @@
                     clearInterval(lightTimer);
                     const randomDelay = Math.random() * 2500 + 500;
                     goTimer = setTimeout(() => {
+                        // 先修改DOM样式（红灯熄灭）
                         lights.forEach(light => light.classList.remove('active'));
                         result.textContent = '发车！';
                         result.className = 'result text-green';
-                        startTime = performance.now();
+                        // 等待下一帧渲染完成后记录开始时间，匹配用户视觉感知
+                        requestAnimationFrame(() => {
+                            startTime = performance.now();
+                        });
                     }, randomDelay);
                 }
             }, 800);
@@ -223,54 +225,41 @@
             
             if (isCooldown) return;
 
-            isTouchEvent = e.type === 'touchstart';
-            
+            // 移除触摸事件的固定延迟，统一处理逻辑
             if (!testActive) {
-                if (isTouchEvent) {
-                    setTimeout(() => {
-                        startTest();
-                    }, TOUCH_DELAY);
-                } else {
-                    startTest();
-                }
+                startTest();
                 return;
             }
 
-            const handleJudge = () => {
-                const currentTime = performance.now();
-                const start = startTime;
-                fullReset();
+            // 直接执行判定逻辑，无额外延迟
+            const currentTime = performance.now();
+            const start = startTime;
+            fullReset();
 
-                if (start === 0) {
-                    result.textContent = '提前发车将被罚时';
-                    result.className = 'result text-red';
-                    startCooldown();
-                    return;
-                }
-
-                const reaction = Math.round(currentTime - start);
-                if (reaction < HUMAN_MIN_REACTION) {
-                    result.textContent = '❌ 无效成绩';
-                    result.className = 'result text-red';
-                } else {
-                    if (bestTime === null || reaction < bestTime) {
-                        bestTime = reaction;
-                        updateBestRecord();
-                    }
-                    result.textContent = `${reaction} ms`;
-                    result.className = 'result text-green';
-                }
-
+            if (start === 0) {
+                result.textContent = '提前发车将被罚时';
+                result.className = 'result text-red';
                 startCooldown();
-            };
-
-            if (isTouchEvent) {
-                setTimeout(handleJudge, TOUCH_DELAY);
-            } else {
-                handleJudge();
+                return;
             }
+
+            const reaction = Math.round(currentTime - start);
+            if (reaction < HUMAN_MIN_REACTION) {
+                result.textContent = '❌ 无效成绩';
+                result.className = 'result text-red';
+            } else {
+                if (bestTime === null || reaction < bestTime) {
+                    bestTime = reaction;
+                    updateBestRecord();
+                }
+                result.textContent = `${reaction} ms`;
+                result.className = 'result text-green';
+            }
+
+            startCooldown();
         }
 
+        // 优化事件监听，passive: true提升触摸响应性能
         document.addEventListener('click', handleInteraction);
         document.addEventListener('touchstart', handleInteraction, { passive: false });
         
