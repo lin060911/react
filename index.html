@@ -52,38 +52,137 @@
         }
 
         .f1-light {
-            width: 50px;
-            height: 50px;
+            width: 60px;
+            height: 60px;
             border-radius: 50%;
             background: #333333;
             border: 3px solid #444444;
-            transition: background 0.05s ease, box-shadow 0.05s ease;
             box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            transition: none !important;
         }
 
         .f1-light.active {
             background: #ff3333;
             border-color: #ff6666;
             box-shadow: 0 0 20px #ff3333, 0 0 40px #ff3333;
+            transition: none !important;
+        }
+
+        .f1-light.green {
+            background: #00ff00;
+            border-color: #66ff66;
+            box-shadow: 0 0 20px #00ff00, 0 0 40px #00ff00;
+            transition: none !important;
+        }
+
+        .result-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 30px 0;
+            min-height: 100px;
         }
 
         .result {
-            font-size: 42px;
+            font-size: 32px;
             font-weight: 700;
-            margin: 30px 0;
-            min-height: 60px;
             text-align: center;
             letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .timer {
+            font-size: 18px;
+            color: #999999;
+            font-weight: 600;
+            text-align: center;
+            min-height: 25px;
+            opacity: 0;
+            transition: opacity 0.1s ease;
+        }
+
+        .timer.visible {
+            opacity: 1;
         }
 
         .tip {
             font-size: 16px;
             color: #999999;
-            margin-bottom: 30px;
+            margin-bottom: 20px;
             text-align: center;
             max-width: 500px;
             line-height: 1.5;
             transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .mode-switch {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 30px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        .switch-label {
+            font-size: 16px;
+            color: #999999;
+            font-weight: 600;
+            pointer-events: none;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+            pointer-events: none;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #333;
+            border: 2px solid #444;
+            transition: .4s;
+            border-radius: 34px;
+            pointer-events: none;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #00ff00;
+            border-color: #66ff66;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(28px);
         }
 
         .best-record {
@@ -123,6 +222,18 @@
             .result {
                 font-size: 34px;
             }
+            .timer {
+                font-size: 28px;
+            }
+            .mode-switch {
+                padding: 8px 16px;
+            }
+            .switch-label {
+                font-size: 14px;
+            }
+            .controls-info {
+                font-size: 12px;
+            }
         }
     </style>
 </head>
@@ -141,7 +252,10 @@
         <div class="f1-light"></div>
     </div>
 
-    <div class="result text-gray" id="result">点击屏幕开始</div>
+    <div class="result-container">
+        <div class="result text-gray" id="result">点击屏幕开始</div>
+        <div class="timer" id="timer"></div>
+    </div>
 
     <div class="tip" id="tip">
         规则：来自真实F1发车信号灯规则<br>
@@ -149,13 +263,25 @@
         提前发车罚时 | 人类极限反应：≥100ms
     </div>
 
+    <div class="mode-switch" id="modeSwitch">
+        <span class="switch-label">绿灯模式：</span>
+        <label class="switch">
+            <input type="checkbox" id="greenModeToggle">
+            <span class="slider"></span>
+        </label>
+    </div>
+
     <div class="best-record" id="bestRecord">最快成绩：-- ms</div>
 
     <script>
         const lights = document.querySelectorAll('.f1-light');
         const result = document.getElementById('result');
+        const timer = document.getElementById('timer');
         const bestRecord = document.getElementById('bestRecord');
         const tip = document.getElementById('tip');
+        const greenModeToggle = document.getElementById('greenModeToggle');
+        const modeSwitch = document.getElementById('modeSwitch');
+        const controlsInfo = document.getElementById('controlsInfo');
         
         let testActive = false;
         let isCooldown = false;
@@ -163,16 +289,50 @@
         let bestTime = null;
         let lightTimer = null;
         let goTimer = null;
+        let reactionTimer = null;
         const HUMAN_MIN_REACTION = 100;
+        let isTouchEvent = false;
+        const TOUCH_DELAY = 50;
+        let isGreenMode = false; 
+
+        modeSwitch.addEventListener('click', function(e) {
+            e.stopPropagation();
+            greenModeToggle.checked = !greenModeToggle.checked;
+            toggleGreenMode(greenModeToggle.checked);
+        });
+
+        document.querySelectorAll('.switch-label, .switch, .slider').forEach(element => {
+            element.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+        });
+
+        greenModeToggle.addEventListener('change', function(e) {
+            e.stopPropagation();
+            toggleGreenMode(this.checked);
+        });
+
+        function toggleGreenMode(enabled) {
+            isGreenMode = enabled;
+            if (isGreenMode) {
+                tip.innerHTML = "规则：来自真实F1发车信号灯规则<br>5盏红灯依次亮起 → 随机0.5s-3.0s红灯变绿 → 变绿瞬间点击<br>提前发车罚时 | 人类极限反应：≥100ms";
+            } else {
+                tip.innerHTML = "规则：来自真实F1发车信号灯规则<br>5盏红灯依次亮起 → 随机0.5s-3.0s红灯熄灭 → 熄灭瞬间点击<br>提前发车罚时 | 人类极限反应：≥100ms";
+            }
+        }
 
         function fullReset() {
             testActive = false;
             startTime = 0;
             clearInterval(lightTimer);
             clearTimeout(goTimer);
-            lights.forEach(light => light.classList.remove('active'));
-            tip.classList.remove('hidden');
-            bestRecord.classList.remove('hidden');
+            clearInterval(reactionTimer);
+            lights.forEach(light => {
+                light.classList.remove('active');
+                light.classList.remove('green');
+            });
+            timer.classList.remove('visible');
+            timer.textContent = '';
         }
 
         function updateBestRecord() {
@@ -183,20 +343,24 @@
             isCooldown = true;
             setTimeout(() => {
                 isCooldown = false;
-                result.textContent = '点击屏幕开始';
+                result.textContent = '点击屏幕或按[空格键]开始';
                 result.className = 'result text-gray';
-                tip.classList.remove('hidden');
-                bestRecord.classList.remove('hidden');
             }, 2000);
+        }
+
+        function updateReactionTimer() {
+            if (startTime === 0) return;
+            const currentTime = performance.now();
+            const elapsed = Math.round(currentTime - startTime);
+            timer.textContent = `${elapsed} ms`;
         }
 
         function startTest() {
             fullReset();
             testActive = true;
-            result.textContent = '等待所有红灯熄灭';
+            result.textContent = isGreenMode ? '等待红灯变绿' : '等待所有红灯熄灭';
             result.className = 'result text-yellow';
-            tip.classList.add('hidden');
-            bestRecord.classList.add('hidden');
+            timer.classList.remove('visible');
 
             let lightIndex = 0;
             lightTimer = setInterval(() => {
@@ -207,65 +371,114 @@
                     clearInterval(lightTimer);
                     const randomDelay = Math.random() * 2500 + 500;
                     goTimer = setTimeout(() => {
-                        // 先修改DOM样式（红灯熄灭）
-                        lights.forEach(light => light.classList.remove('active'));
+                        if (isGreenMode) {
+                            for (let i = 0; i < lights.length; i++) {
+                                lights[i].classList.remove('active');
+                                lights[i].classList.add('green');
+                            }
+                        } else {
+                            for (let i = 0; i < lights.length; i++) {
+                                lights[i].classList.remove('active');
+                            }
+                        }
+                        
+                        startTime = performance.now();
+                        
                         result.textContent = '发车！';
                         result.className = 'result text-green';
-                        // 等待下一帧渲染完成后记录开始时间，匹配用户视觉感知
-                        requestAnimationFrame(() => {
-                            startTime = performance.now();
-                        });
+                        timer.classList.add('visible');
+                        timer.textContent = '0 ms';
+                        
+                        clearInterval(reactionTimer);
+                        reactionTimer = setInterval(updateReactionTimer, 10);
                     }, randomDelay);
                 }
             }, 800);
         }
 
         function handleInteraction(e) {
+            if (e.target.closest('.mode-switch')) {
+                return;
+            }
+            
             e.preventDefault();
             
             if (isCooldown) return;
 
-            // 移除触摸事件的固定延迟，统一处理逻辑
+            isTouchEvent = e.type === 'touchstart';
+            
             if (!testActive) {
-                startTest();
-                return;
-            }
-
-            // 直接执行判定逻辑，无额外延迟
-            const currentTime = performance.now();
-            const start = startTime;
-            fullReset();
-
-            if (start === 0) {
-                result.textContent = '提前发车将被罚时';
-                result.className = 'result text-red';
-                startCooldown();
-                return;
-            }
-
-            const reaction = Math.round(currentTime - start);
-            if (reaction < HUMAN_MIN_REACTION) {
-                result.textContent = '❌ 无效成绩';
-                result.className = 'result text-red';
-            } else {
-                if (bestTime === null || reaction < bestTime) {
-                    bestTime = reaction;
-                    updateBestRecord();
+                if (isTouchEvent) {
+                    setTimeout(() => {
+                        startTest();
+                    }, TOUCH_DELAY);
+                } else {
+                    startTest();
                 }
-                result.textContent = `${reaction} ms`;
-                result.className = 'result text-green';
+                return;
             }
 
-            startCooldown();
+            const handleJudge = () => {
+                const currentTime = performance.now();
+                const start = startTime;
+                clearInterval(reactionTimer);
+                timer.classList.remove('visible');
+                timer.textContent = '';
+                
+                for (let i = 0; i < lights.length; i++) {
+                    lights[i].classList.remove('active');
+                    lights[i].classList.remove('green');
+                }
+                
+                fullReset();
+
+                if (start === 0) {
+                    result.textContent = '提前发车将被罚时';
+                    result.className = 'result text-red';
+                    startCooldown();
+                    return;
+                }
+
+                const reaction = Math.round(currentTime - start);
+                if (reaction < HUMAN_MIN_REACTION) {
+                    result.textContent = '❌ 无效成绩';
+                    result.className = 'result text-red';
+                } else {
+                    if (bestTime === null || reaction < bestTime) {
+                        bestTime = reaction;
+                        updateBestRecord();
+                    }
+                    result.textContent = `${reaction} ms`;
+                    result.className = 'result text-green';
+                }
+
+                startCooldown();
+            };
+
+            if (isTouchEvent) {
+                setTimeout(handleJudge, TOUCH_DELAY);
+            } else {
+                handleJudge();
+            }
         }
 
-        // 优化事件监听，passive: true提升触摸响应性能
+        function handleSpaceKey(e) {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                handleInteraction(e);
+            }
+        }
+
         document.addEventListener('click', handleInteraction);
         document.addEventListener('touchstart', handleInteraction, { passive: false });
+        document.addEventListener('keydown', handleSpaceKey);
         
         document.addEventListener('touchmove', (e) => {
             e.preventDefault();
         }, { passive: false });
+        
+        result.textContent = '点击屏幕或按[空格键]开始';
+        updateBestRecord();
     </script>
 </body>
 </html>
