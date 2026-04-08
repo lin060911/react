@@ -22,6 +22,7 @@
             color: #ffffff;
             padding: 20px;
             user-select: none;
+            touch-action: manipulation;
         }
 
         .logo-container {
@@ -144,7 +145,7 @@
 
     <div class="tip" id="tip">
         规则：来自真实F1发车信号灯规则<br>
-        5盏红灯依次亮起 → 随机0.5s-3.0s红灯红灯熄灭 → 熄灭瞬间点击<br>
+        5盏红灯依次亮起 → 随机0.5s-3.0s红灯熄灭 → 熄灭瞬间点击<br>
         提前发车罚时 | 人类极限反应：≥100ms
     </div>
 
@@ -163,6 +164,8 @@
         let lightTimer = null;
         let goTimer = null;
         const HUMAN_MIN_REACTION = 100;
+        let isTouchEvent = false;
+        const TOUCH_DELAY = 50;
 
         function fullReset() {
             testActive = false;
@@ -215,44 +218,65 @@
             }, 800);
         }
 
-        function handleClick(e) {
+        function handleInteraction(e) {
             e.preventDefault();
+            
             if (isCooldown) return;
 
+            isTouchEvent = e.type === 'touchstart';
+            
             if (!testActive) {
-                startTest();
-                return;
-            }
-
-            const currentTime = performance.now();
-            const start = startTime;
-            fullReset();
-
-            if (start === 0) {
-                result.textContent = '提前发车将被罚时';
-                result.className = 'result text-red';
-                startCooldown();
-                return;
-            }
-
-            const reaction = Math.round(currentTime - start);
-            if (reaction < HUMAN_MIN_REACTION) {
-                result.textContent = '❌ 无效成绩';
-                result.className = 'result text-red';
-            } else {
-                if (bestTime === null || reaction < bestTime) {
-                    bestTime = reaction;
-                    updateBestRecord();
+                if (isTouchEvent) {
+                    setTimeout(() => {
+                        startTest();
+                    }, TOUCH_DELAY);
+                } else {
+                    startTest();
                 }
-                result.textContent = `${reaction} ms`;
-                result.className = 'result text-green';
+                return;
             }
 
-            startCooldown();
+            const handleJudge = () => {
+                const currentTime = performance.now();
+                const start = startTime;
+                fullReset();
+
+                if (start === 0) {
+                    result.textContent = '提前发车将被罚时';
+                    result.className = 'result text-red';
+                    startCooldown();
+                    return;
+                }
+
+                const reaction = Math.round(currentTime - start);
+                if (reaction < HUMAN_MIN_REACTION) {
+                    result.textContent = '❌ 无效成绩';
+                    result.className = 'result text-red';
+                } else {
+                    if (bestTime === null || reaction < bestTime) {
+                        bestTime = reaction;
+                        updateBestRecord();
+                    }
+                    result.textContent = `${reaction} ms`;
+                    result.className = 'result text-green';
+                }
+
+                startCooldown();
+            };
+
+            if (isTouchEvent) {
+                setTimeout(handleJudge, TOUCH_DELAY);
+            } else {
+                handleJudge();
+            }
         }
 
-        document.addEventListener('click', handleClick);
-        document.addEventListener('touchstart', handleClick);
+        document.addEventListener('click', handleInteraction);
+        document.addEventListener('touchstart', handleInteraction, { passive: false });
+        
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+        }, { passive: false });
     </script>
 </body>
 </html>
