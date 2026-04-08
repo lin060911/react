@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 发车反应测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #121212, #1e1e1e);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            padding: 20px;
+            user-select: none;
+        }
+
+        .logo-container {
+            margin-bottom: 0;
+            text-align: center;
+        }
+
+        .logo {
+            max-width: 300px;
+            height: auto;
+            filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.3));
+        }
+
+        .title {
+            font-size: 38px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: #f5f5f5;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .light-container {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 50px;
+        }
+
+        .f1-light {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #333333;
+            border: 3px solid #444444;
+            transition: background 0.05s ease, box-shadow 0.05s ease;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        .f1-light.active {
+            background: #ff3333;
+            border-color: #ff6666;
+            box-shadow: 0 0 20px #ff3333, 0 0 40px #ff3333;
+        }
+
+        .result {
+            font-size: 42px;
+            font-weight: 700;
+            margin: 30px 0;
+            min-height: 60px;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        .tip {
+            font-size: 16px;
+            color: #999999;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 500px;
+            line-height: 1.5;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .best-record {
+            font-size: 20px;
+            color: #00ff88;
+            margin-top: 20px;
+            font-weight: 600;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+
+        .hidden {
+            opacity: 0;
+            visibility: hidden;
+            height: 0;
+            margin: 0;
+        }
+
+        .text-yellow { color: #ffcc00; }
+        .text-green { color: #00ff88; }
+        .text-gray { color: #999999; }
+        .text-red { color: #ff3333; }
+
+        @media (max-width: 600px) {
+            .f1-light {
+                width: 40px;
+                height: 40px;
+            }
+            .light-container {
+                gap: 12px;
+            }
+            .logo {
+                max-width: 140px;
+            }
+            .title {
+                font-size: 22px;
+            }
+            .result {
+                font-size: 34px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo-container">
+        <img src="images/logo.png" alt="F1 Logo" class="logo">
+    </div>
+
+    <h1 class="title">F1 发车反应测试</h1>
+    
+    <div class="light-container">
+        <div class="f1-light"></div>
+        <div class="f1-light"></div>
+        <div class="f1-light"></div>
+        <div class="f1-light"></div>
+        <div class="f1-light"></div>
+    </div>
+
+    <div class="result text-gray" id="result">点击屏幕开始</div>
+
+    <div class="tip" id="tip">
+        规则：来自真实F1发车信号灯规则<br>
+        5盏红灯依次亮起 → 随机0.5s-3.0s红灯红灯熄灭 → 熄灭瞬间点击<br>
+        提前发车罚时 | 人类极限反应：≥100ms
+    </div>
+
+    <div class="best-record" id="bestRecord">最快成绩：-- ms</div>
+
+    <script>
+        const lights = document.querySelectorAll('.f1-light');
+        const result = document.getElementById('result');
+        const bestRecord = document.getElementById('bestRecord');
+        const tip = document.getElementById('tip');
+        
+        let testActive = false;
+        let isCooldown = false;
+        let startTime = 0;
+        let bestTime = null;
+        let lightTimer = null;
+        let goTimer = null;
+        const HUMAN_MIN_REACTION = 100;
+
+        function fullReset() {
+            testActive = false;
+            startTime = 0;
+            clearInterval(lightTimer);
+            clearTimeout(goTimer);
+            lights.forEach(light => light.classList.remove('active'));
+            tip.classList.remove('hidden');
+            bestRecord.classList.remove('hidden');
+        }
+
+        function updateBestRecord() {
+            bestRecord.textContent = bestTime === null ? '最快成绩：-- ms' : `最快成绩：${bestTime} ms`;
+        }
+
+        function startCooldown() {
+            isCooldown = true;
+            setTimeout(() => {
+                isCooldown = false;
+                result.textContent = '点击屏幕开始';
+                result.className = 'result text-gray';
+                tip.classList.remove('hidden');
+                bestRecord.classList.remove('hidden');
+            }, 2000);
+        }
+
+        function startTest() {
+            fullReset();
+            testActive = true;
+            result.textContent = '等待所有红灯熄灭';
+            result.className = 'result text-yellow';
+            tip.classList.add('hidden');
+            bestRecord.classList.add('hidden');
+
+            let lightIndex = 0;
+            lightTimer = setInterval(() => {
+                if (lightIndex < 5) {
+                    lights[lightIndex].classList.add('active');
+                    lightIndex++;
+                } else {
+                    clearInterval(lightTimer);
+                    const randomDelay = Math.random() * 2500 + 500;
+                    goTimer = setTimeout(() => {
+                        lights.forEach(light => light.classList.remove('active'));
+                        result.textContent = '发车！';
+                        result.className = 'result text-green';
+                        startTime = performance.now();
+                    }, randomDelay);
+                }
+            }, 800);
+        }
+
+        function handleClick(e) {
+            e.preventDefault();
+            if (isCooldown) return;
+
+            if (!testActive) {
+                startTest();
+                return;
+            }
+
+            const currentTime = performance.now();
+            const start = startTime;
+            fullReset();
+
+            if (start === 0) {
+                result.textContent = '提前发车将被罚时';
+                result.className = 'result text-red';
+                startCooldown();
+                return;
+            }
+
+            const reaction = Math.round(currentTime - start);
+            if (reaction < HUMAN_MIN_REACTION) {
+                result.textContent = '❌ 无效成绩';
+                result.className = 'result text-red';
+            } else {
+                if (bestTime === null || reaction < bestTime) {
+                    bestTime = reaction;
+                    updateBestRecord();
+                }
+                result.textContent = `${reaction} ms`;
+                result.className = 'result text-green';
+            }
+
+            startCooldown();
+        }
+
+        document.addEventListener('click', handleClick);
+        document.addEventListener('touchstart', handleClick);
+    </script>
+</body>
+</html>
