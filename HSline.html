@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鼠标定位测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #121212, #1e1e1e);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            padding: 10px;
+            user-select: none;
+            touch-action: none;
+            gap: 10px;
+        }
+
+        .test-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            max-width: 900px;
+            padding: 10px 0;
+            width: 100%;
+        }
+
+        .title {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #f5f5f5;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .flow-tip-container {
+            margin: 70px 0 0 0; 
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .flow-tip {
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+            letter-spacing: 1px;
+            color: #f5f5f5;
+        }
+
+        .target-container {
+            width: 1480px;
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            box-shadow: 0 0 30px rgba(0,0,0,0.7);
+            overflow: hidden;
+        }
+
+        .head-line {
+            position: absolute;
+            width: 100%;
+            height: 4px;
+            background:#00ff88;
+            top: 50%;
+            left: 0;
+            transform: translateY(-50%);
+            z-index: 1;
+        }
+
+        .target-ball {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background:#ffea47;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px #ffb247cc;
+            cursor: crosshair;
+            z-index: 2;
+            opacity: 0;
+            transition: opacity 0.1s ease;
+        }
+
+        .target-ball.visible {
+            opacity: 1;
+        }
+
+        .timer {
+            font-size: 14px;
+            color: #999999;
+            font-weight: 600;
+            text-align: center;
+            min-height: 20px;
+            opacity: 0;
+            margin: 30px 0; 
+        }
+
+        .timer.visible {
+            opacity: 1;
+        }
+
+        .rule-tip {
+            font-size: 14px;
+            color: #999999;
+            margin-top: 10px;
+            text-align: left;
+            max-width: 600px;
+            line-height: 1.4;
+        }
+
+        .result-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 500px;
+            width: 100%;
+            padding: 8px 0;
+            margin-bottom: 10px;
+        }
+
+        .stats-group {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            width: 100%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .stats-group-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #ccc;
+            margin-bottom: 8px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 4px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-top: 6px;
+            width: 100%;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 6px 4px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 3px;
+        }
+
+        .stat-value {
+            font-size: 14px;
+            font-weight: 700;
+            color: #00ff88;
+        }
+
+        .stat-value.best {
+            color: #ffcc00;
+        }
+
+        .text-yellow { color: #ffda46; }
+        .text-green { color: #54ffaf; }
+        .text-gray { color: #999999; }
+        .text-red { color: #fd4b4b; }
+        .text-orange { color: #ffab2d; }
+
+        @media (max-width: 1024px) {
+            body {
+                gap: 8px;
+            }
+
+            .test-area {
+                max-width: 100%;
+            }
+
+            .result-container {
+                max-width: 100%;
+                width: 100%;
+                padding: 6px 15px;
+            }
+
+            .title {
+                font-size: 24px;
+            }
+            
+            .flow-tip {
+                font-size: 16px;
+            }
+
+            .target-container {
+                height: 100px;
+            }
+
+            .target-ball {
+                width: 35px;
+                height: 35px;
+            }
+
+            .stats-group {
+                padding: 6px 10px;
+            }
+
+            .stat-value {
+                font-size: 13px;
+            }
+
+            .rule-tip {
+                font-size: 12px;
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .stats {
+                grid-template-columns: 1fr;
+                gap: 4px;
+            }
+
+            .target-container {
+                height: 80px;
+            }
+
+            .target-ball {
+                width: 30px;
+                height: 30px;
+            }
+
+            .stats-group {
+                padding: 4px 8px;
+            }
+
+            .stat-label {
+                font-size: 10px;
+            }
+
+            .stat-value {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-area">
+        <h1 class="title">鼠标定位测试</h1>
+        
+        <div class="flow-tip-container">
+            <div class="flow-tip text-gray" id="flowTip">点击屏幕或按空格键开始测试</div>
+        </div>
+        <div class="timer" id="timer"></div>   
+
+   
+        <div class="target-container" id="targetContainer">
+            <div class="head-line"></div>
+            <div class="target-ball" id="targetBall"></div>
+        </div>
+ 
+    
+     
+        <div class="rule-tip" id="ruleTip">
+            <strong>规则：</strong><br>
+            1. 水平头线上会随机出现小球<br>
+            2. 快速移动鼠标点击小球，模拟FPS游戏头线定位<br>
+            3. 测试从首次小球出现开始，直到反应超时结束<br>
+            4. 超过1000ms未点击将判定为超时<br>
+            5. 最终统计最快点击时间、平均点击时间和正确次数
+        </div>
+    </div>        
+    <div class="result-container">
+        <div class="stats-group">
+            <div class="stats-group-title">本次成绩</div>
+            <div class="stats" id="currentStats">
+                <div class="stat-item">
+                    <div class="stat-label">最快点击时间</div>
+                    <div class="stat-value text-green" id="currentFastest">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">平均点击时间</div>
+                    <div class="stat-value text-orange" id="currentAvg">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">正确次数</div>
+                    <div class="stat-value text-yellow" id="currentCorrect">0</div>
+                </div>
+            </div>
+        </div>
+        <div class="stats-group">
+            <div class="stats-group-title">最佳成绩</div>
+            <div class="stats" id="bestStats">
+                <div class="stat-item">
+                    <div class="stat-label">最快点击时间</div>
+                    <div class="stat-value best" id="bestFastest">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">平均点击时间</div>
+                    <div class="stat-value best" id="bestAvg">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">正确次数</div>
+                    <div class="stat-value best" id="bestCorrect">0</div>
+                </div>
+            </div>
+        </div>
+    </div>    
+
+
+
+    <script>
+        const targetBall = document.getElementById('targetBall');
+        const targetContainer = document.getElementById('targetContainer');
+        const flowTip = document.getElementById('flowTip');
+        const timer = document.getElementById('timer');
+        
+        const currentFastestEl = document.getElementById('currentFastest');
+        const currentAvgEl = document.getElementById('currentAvg');
+        const currentCorrectEl = document.getElementById('currentCorrect');
+        const bestFastestEl = document.getElementById('bestFastest');
+        const bestAvgEl = document.getElementById('bestAvg');
+        const bestCorrectEl = document.getElementById('bestCorrect');
+        
+        const MIN_DELAY = 100;
+        const MAX_DELAY = 500;
+        const TIMEOUT_DURATION = 1000;
+        const BALL_SIZE = 30;
+        const CONTAINER_PADDING = 50;
+
+        let testActive = false;
+        let isCooldown = false;
+        let clickTimes = [];
+        let startTime = 0;
+        let ballTimer = null;
+        let reactionTimer = null;
+        let testEnded = false;
+        let timeoutTimer = null;
+
+        let bestScores = {
+            fastest: localStorage.getItem('mouseBestFastest') || '--',
+            avg: localStorage.getItem('mouseBestAvg') || '--',
+            correct: localStorage.getItem('mouseBestCorrect') || 0
+        };
+
+
+        function getRandomXPosition() {
+            const containerWidth = targetContainer.offsetWidth;
+            return CONTAINER_PADDING + Math.random() * (containerWidth - 2 * CONTAINER_PADDING);
+        }
+
+
+        function fullReset() {
+            testActive = false;
+            isCooldown = false;
+            testEnded = false;
+            clickTimes = [];
+            startTime = 0;
+            
+            clearTimeout(ballTimer);
+            clearInterval(reactionTimer);
+            clearTimeout(timeoutTimer);
+            
+            targetBall.className = 'target-ball';
+            timer.classList.remove('visible');
+            timer.textContent = '';
+            flowTip.textContent = '点击屏幕或按空格键开始测试';
+            flowTip.className = 'flow-tip text-gray';
+            updateCurrentStats();
+        }
+
+
+        function updateCurrentStats() {
+            const fastest = clickTimes.length > 0 ? Math.min(...clickTimes) : '--';
+            const avg = clickTimes.length > 0 ? Math.round(clickTimes.reduce((a, b) => a + b, 0) / clickTimes.length) : '--';
+            const correct = clickTimes.length;
+            
+            currentFastestEl.textContent = fastest === '--' ? '-- ms' : `${fastest} ms`;
+            currentAvgEl.textContent = avg === '--' ? '-- ms' : `${avg} ms`;
+            currentCorrectEl.textContent = correct;
+        }
+
+
+        function updateBestStats() {
+            bestFastestEl.textContent = bestScores.fastest === '--' ? '-- ms' : `${bestScores.fastest} ms`;
+            bestAvgEl.textContent = bestScores.avg === '--' ? '-- ms' : `${bestScores.avg} ms`;
+            bestCorrectEl.textContent = bestScores.correct;
+        }
+
+
+        function checkAndUpdateBestScores() {
+            if (clickTimes.length === 0) return;
+            
+            const currentFastest = Math.min(...clickTimes);
+            const currentAvg = Math.round(clickTimes.reduce((a, b) => a + b, 0) / clickTimes.length);
+            const currentCorrect = clickTimes.length;
+
+            if (bestScores.fastest === '--' || currentFastest < bestScores.fastest) {
+                bestScores.fastest = currentFastest;
+                localStorage.setItem('mouseBestFastest', currentFastest);
+            }
+
+            if (bestScores.avg === '--' || currentAvg < bestScores.avg) {
+                bestScores.avg = currentAvg;
+                localStorage.setItem('mouseBestAvg', currentAvg);
+            }
+
+            if (currentCorrect > bestScores.correct) {
+                bestScores.correct = currentCorrect;
+                localStorage.setItem('mouseBestCorrect', currentCorrect);
+            }
+
+            updateBestStats();
+        }
+
+
+        function handleTimeout() {
+            if (testEnded || !testActive) return;
+            
+            clearInterval(reactionTimer);
+            clearTimeout(timeoutTimer);
+            timer.classList.remove('visible');
+            
+            testEnded = true;
+            flowTip.textContent = `超时！1000ms内未点击，测试结束 | 正确次数: ${clickTimes.length}`;
+            flowTip.className = 'flow-tip text-red';
+            updateCurrentStats();
+            
+            targetBall.className = 'target-ball';
+            startTime = 0;
+            startCooldown();
+        }
+
+        function showTargetBall() {
+            if (testEnded) return;
+            
+            const randomX = getRandomXPosition();
+            targetBall.style.left = `${randomX}px`;
+            targetBall.className = 'target-ball visible';
+            
+            startTime = performance.now();
+            flowTip.textContent = '快速点击目标小球！';
+            flowTip.className = 'flow-tip text-yellow';
+            
+            timer.classList.add('visible');
+            timer.textContent = '0 ms';
+            clearInterval(reactionTimer);
+            reactionTimer = setInterval(updateReactionTimer, 10);
+            
+            clearTimeout(timeoutTimer);
+            timeoutTimer = setTimeout(handleTimeout, TIMEOUT_DURATION);
+        }
+
+
+        function updateReactionTimer() {
+            if (startTime === 0 || testEnded) return;
+            const currentTime = performance.now();
+            const elapsed = Math.round(currentTime - startTime);
+            timer.textContent = `${elapsed} ms`;
+        }
+
+
+        function startCooldown() {
+            isCooldown = true;
+            setTimeout(() => {
+                isCooldown = false;
+                if (!testEnded) {
+                    ballTimer = setTimeout(showTargetBall, Math.random() * (MAX_DELAY - MIN_DELAY) + MIN_DELAY);
+                } else {
+                    checkAndUpdateBestScores();
+                    flowTip.textContent = `${flowTip.textContent} | 按空格键或点击屏幕重新开始`;
+                    targetBall.className = 'target-ball';
+                }
+            }, 300);
+        }
+
+        function startTest() {
+            fullReset();
+            testActive = true;
+            flowTip.textContent = '准备开始...';
+            flowTip.className = 'flow-tip text-yellow';
+            
+            ballTimer = setTimeout(showTargetBall, 500);
+        }
+
+
+        function handleBallClick(e) {
+            e.preventDefault();
+            
+            if (!testActive || isCooldown || startTime === 0 || testEnded) return;
+            
+            clearTimeout(timeoutTimer);
+            clearInterval(reactionTimer);
+            timer.classList.remove('visible');
+            
+            const currentTime = performance.now();
+            const clickTime = Math.round(currentTime - startTime);
+            
+            clickTimes.push(clickTime);
+            flowTip.textContent = `点击耗时: ${clickTime} ms`;
+            flowTip.className = 'flow-tip text-green';
+            updateCurrentStats();
+            
+            targetBall.className = 'target-ball';
+            startTime = 0;
+            startCooldown();
+        }
+
+
+        function handleKeydown(e) {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (!testActive || testEnded) {
+                    startTest();
+                    return;
+                }
+            }
+        }
+
+
+        function handleInteraction(e) {
+            e.preventDefault();
+            
+            if (isCooldown) return;
+            
+            if (!testActive || testEnded) {
+                startTest();
+                return;
+            }
+        }
+
+        document.addEventListener('keydown', handleKeydown);
+        document.addEventListener('click', handleInteraction);
+        document.addEventListener('touchstart', handleInteraction, { passive: false });
+        document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+        targetBall.addEventListener('click', handleBallClick);
+        targetBall.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleBallClick(e);
+        }, { passive: false });
+
+        updateCurrentStats();
+        updateBestStats();
+    </script>
+</body>
+</html>
