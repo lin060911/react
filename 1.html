@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>反应测试-箭头</title>
+    <title>箭头反应测试</title>
     <style>
         * {
             margin: 0;
@@ -36,8 +36,8 @@
         }
 
         .title {
-            font-size: 40px;
-            font-weight: 600;
+            font-size: 32px;
+            font-weight: 700;
             margin-bottom: 10px;
             color: #f5f5f5;
             letter-spacing: 2px;
@@ -113,17 +113,13 @@
             border-radius: 0 50% 50% 0;
         }
 
-        .arrow.hide-symbol {
-            color: transparent;
-        }
-
         .rule-tip {
             font-size: 14px;
-            color: #dedede;
+            color: #999999;
             margin-top: 10px;
-            text-align: center;
+            text-align: left;
             max-width: 600px;
-            line-height: 1.2;
+            line-height: 1.4;
         }
 
         .result-container {
@@ -180,11 +176,11 @@
         .stat-value {
             font-size: 14px;
             font-weight: 700;
-            color: #ffcc00;
+            color: #00ff88;
         }
 
         .stat-value.best {
-            color: #00ff88;
+            color: #ffcc00;
         }
 
         .timer {
@@ -201,11 +197,11 @@
             opacity: 1;
         }
 
-        .text-yellow { color: #ffcc00; }
-        .text-green { color: #00ff88; }
+        .text-yellow { color: #ffda46; }
+        .text-green { color: #54ffaf; }
         .text-gray { color: #999999; }
-        .text-red { color: #ff3333; }
-        .text-orange { color: #ff9900; }
+        .text-red { color: #fd4b4b; }
+        .text-orange { color: #ffab2d; }
 
         @media (max-width: 1024px) {
             body {
@@ -251,7 +247,7 @@
             }
 
             .rule-tip {
-                font-size: 14px;
+                font-size: 12px;
                 max-width: 100%;
             }
         }
@@ -302,12 +298,12 @@
         </div>
 
         <div class="rule-tip" id="ruleTip">
-            ヾ(≧▽≦*)o规则：<br>
+            <strong>规则：</strong><br>
             1. 屏幕会随机出现上下左右箭头<br>
-            2. 按对应方向键(↑↓←→)或WASD键(W上|A左|S下|D右)反应<br>
-            3. 测试从首次箭头出现开始，直到按错方向结束<br>
-            4. 最终统计最快反应时间、平均反应时间和正确次数<br>
-            5. 正确次数达到50次时，小箭头符号会隐藏
+            2. 按对应方向键(↑↓←→)或WASD键(W=上/A=左/S=下/D=右)反应<br>
+            3. 测试从首次箭头出现开始，直到按错方向或超时结束<br>
+            4. 超过600ms未操作将判定为超时<br>
+            5. 最终统计最快反应时间、平均反应时间和正确次数
         </div>
     </div>
 
@@ -372,7 +368,7 @@
         const MIN_DELAY = 20;
         const MAX_DELAY = 200; 
         const TOUCH_DELAY = 0;
-        const HIDE_SYMBOL_COUNT = 50;
+        const TIMEOUT_DURATION = 600;
 
         let testActive = false;
         let isCooldown = false;
@@ -382,6 +378,7 @@
         let arrowTimer = null;
         let reactionTimer = null;
         let testEnded = false;
+        let timeoutTimer = null;
 
         let bestScores = {
             fastest: localStorage.getItem('bestFastest') || '--',
@@ -405,6 +402,7 @@
             
             clearTimeout(arrowTimer);
             clearInterval(reactionTimer);
+            clearTimeout(timeoutTimer);
             
             arrow.className = 'arrow';
             timer.classList.remove('visible');
@@ -457,37 +455,48 @@
             updateBestStats();
         }
 
+        function handleTimeout() {
+            if (testEnded || !testActive) return;
+            
+            clearInterval(reactionTimer);
+            clearTimeout(timeoutTimer);
+            timer.classList.remove('visible');
+            
+            testEnded = true;
+            flowTip.textContent = `超时！600ms内未操作，测试结束 | 正确次数: ${reactionTimes.length}`;
+            flowTip.className = 'flow-tip text-red';
+            updateCurrentStats();
+            
+            arrow.className = 'arrow';
+            startTime = 0;
+            startCooldown();
+        }
+
         function showArrow() {
             if (testEnded) return;
             
             currentDirection = getRandomDirection();
-            let arrowClass = `arrow ${currentDirection} visible`;
-            if (reactionTimes.length >= HIDE_SYMBOL_COUNT) {
-                arrowClass += ' hide-symbol';
-                flowTip.textContent = 'level.2 箭头符号已隐藏';
-                flowTip.className = 'flow-tip text-yellow';
-            }
-            
-            arrow.className = arrowClass;
+            arrow.className = `arrow ${currentDirection} visible`;
             
             const directionSymbols = {
-                up: '↑',
-                down: '↓',
-                left: '←',
-                right: '→'
+                up: '⇧',
+                down: '⇩',
+                left: '⇦',
+                right: '⇨'
             };
             arrow.textContent = directionSymbols[currentDirection];
             
             startTime = performance.now();
-            if (reactionTimes.length < HIDE_SYMBOL_COUNT) {
-                flowTip.textContent = '按对应方向键/WASD';
-                flowTip.className = 'flow-tip text-yellow';
-            }
+            flowTip.textContent = '按对应方向键/WASD';
+            flowTip.className = 'flow-tip text-yellow';
             
             timer.classList.add('visible');
             timer.textContent = '0 ms';
             clearInterval(reactionTimer);
             reactionTimer = setInterval(updateReactionTimer, 10);
+            
+            clearTimeout(timeoutTimer);
+            timeoutTimer = setTimeout(handleTimeout, TIMEOUT_DURATION);
         }
 
 
@@ -507,8 +516,7 @@
                     arrowTimer = setTimeout(showArrow, Math.random() * (MAX_DELAY - MIN_DELAY) + MIN_DELAY);
                 } else {
                     checkAndUpdateBestScores();
-                    flowTip.textContent = `测试结束！正确次数: ${reactionTimes.length} | 按空格键或点击屏幕重新开始`;
-                    flowTip.className = 'flow-tip text-yellow';
+                    flowTip.textContent = `${flowTip.textContent} | 按空格键或点击屏幕重新开始`;
                     arrow.className = 'arrow';
                 }
             }, 500);
@@ -528,6 +536,7 @@
         function handleInputValidation(inputValue) {
             if (!testActive || isCooldown || startTime === 0 || testEnded) return;
             
+            clearTimeout(timeoutTimer);
             clearInterval(reactionTimer);
             timer.classList.remove('visible');
             
