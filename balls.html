@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>定位反应测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #121212, #1e1e1e);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #ffffff;
+            padding: 10px;
+            user-select: none;
+            touch-action: none;
+            gap: 10px;
+        }
+
+        .test-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            max-width: 900px;
+            padding: 10px 0;
+            width: 100%;
+        }
+
+        .title {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #f5f5f5;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .flow-tip-container {
+            margin: 10px 0 0 0; 
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .flow-tip {
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+            letter-spacing: 1px;
+            color: #f5f5f5;
+        }
+
+        .game-container {
+            width: 800px;
+            height: 500px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            box-shadow: 0 0 30px rgba(0,0,0,0.7);
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .symbol-circle {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.1);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 95px;
+            opacity: 0;
+            transition: opacity 0.1s ease;
+            border: 8px solid rgba(255, 255, 255, 0.2);    
+            line-height: 1;
+            padding-bottom: 5px;
+
+        }
+
+        .symbol-circle.visible {
+            opacity: 1;
+        }
+
+        .symbol-circle.correct {
+            background: rgba(0, 255, 136, 0.2);
+            border-color: #00ff88;
+            box-shadow: 0 0 20px #00ff88cc;
+            z-index: 999;
+
+        }
+
+        .symbol-circle.wrong {
+            background: rgba(253, 75, 75, 0.2);
+            border-color: #fd4b4b;
+            box-shadow: 0 0 20px #fd4b4bcc;
+        }
+
+        .timer {
+            font-size: 10px;
+            color: #999999;
+            font-weight: 600;
+            text-align: center;
+            min-height: 20px;
+            opacity: 0;
+            z-index: 11000;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .timer.visible {
+            opacity: 1;
+        }
+
+        .progress {
+            font-size: 16px;
+            color: #999999;
+            font-weight: 600;
+            text-align: center;
+            min-height: 24px;
+            margin: 10px 0;
+        }
+
+        .rule-tip {
+            font-size: 14px;
+            color: #999999;
+            margin-top: 10px;
+            text-align: left;
+            max-width: 600px;
+            line-height: 1.4;
+        }
+
+        .result-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-width: 500px;
+            width: 100%;
+            padding: 8px 0;
+            margin-bottom: 10px;
+        }
+
+        .stats-group {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 8px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            width: 100%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .stats-group-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #ccc;
+            margin-bottom: 8px;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 4px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 6px;
+            margin-top: 6px;
+            width: 100%;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px 8px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #00ff88;
+        }
+
+        .stat-value.best {
+            color: #ffcc00;
+        }
+
+        .text-yellow { color: #ffda46; }
+        .text-green { color: #54ffaf; }
+        .text-gray { color: #999999; }
+        .text-red { color: #fd4b4b; }
+        .text-orange { color: #ffab2d; }
+
+        @media (max-width: 1024px) {
+            body {
+                gap: 8px;
+            }
+
+            .test-area {
+                max-width: 100%;
+            }
+
+            .result-container {
+                max-width: 100%;
+                width: 100%;
+                padding: 6px 15px;
+            }
+
+            .title {
+                font-size: 24px;
+            }
+            
+            .flow-tip {
+                font-size: 16px;
+            }
+
+            .game-container {
+                width: 90%;
+                height: 400px;
+            }
+
+            .symbol-circle {
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+            }
+
+            .stats-group {
+                padding: 6px 10px;
+            }
+
+            .stat-value {
+                font-size: 18px;
+            }
+
+            .rule-tip {
+                font-size: 12px;
+                max-width: 100%;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .game-container {
+                height: 300px;
+            }
+
+            .symbol-circle {
+                width: 40px;
+                height: 40px;
+                font-size: 20px;
+            }
+
+            .stats-group {
+                padding: 4px 8px;
+            }
+
+            .stat-label {
+                font-size: 12px;
+            }
+
+            .stat-value {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-area">
+        <h1 class="title">定位反应测试</h1>
+
+        <div class="timer" id="timer"></div>
+
+        <div class="game-container" id="gameContainer"></div>
+
+        <div class="flow-tip-container">
+            <div class="flow-tip text-gray" id="flowTip">点击屏幕或按空格键开始测试</div>
+        </div>
+
+        <div class="progress" id="progress"></div>        
+
+
+        <div class="rule-tip" id="ruleTip">
+            <strong>规则：</strong><br>
+            1. 游戏容器内会随机出现3-5个圆形符号，其中只有1个是◉（正确），其余为◯（错误）<br>
+            2. 快速找到并点击唯一的◉符号<br>
+            3. 总共15组符号，点击正确后自动进入下一组<br>
+            4. 最终统计15组的平均点击用时作为成绩
+        </div>
+    </div>        
+    <div class="result-container">
+        <div class="stats-group">
+            <div class="stats-group-title">本次成绩</div>
+            <div class="stats" id="currentStats">
+                <div class="stat-item">
+                    <div class="stat-label">平均反应时间</div>
+                    <div class="stat-value text-green" id="currentAvg">-- ms</div>
+                </div>
+            </div>
+        </div>
+        <div class="stats-group">
+            <div class="stats-group-title">最佳成绩</div>
+            <div class="stats" id="bestStats">
+                <div class="stat-item">
+                    <div class="stat-label">最佳平均反应时间</div>
+                    <div class="stat-value best" id="bestAvg">-- ms</div>
+                </div>
+            </div>
+        </div>
+    </div>    
+
+    <script>
+        const gameContainer = document.getElementById('gameContainer');
+        const flowTip = document.getElementById('flowTip');
+        const timer = document.getElementById('timer');
+        const progress = document.getElementById('progress');
+        
+        const currentAvgEl = document.getElementById('currentAvg');
+        const bestAvgEl = document.getElementById('bestAvg');
+        
+        const MAX_SYMBOLS = 3;
+        const TOTAL_ROUNDS = 15;
+        const SYMBOL_SIZE = 60;
+        const CONTAINER_PADDING = 80;
+        const COOLDOWN_DURATION = 500;
+
+        let gameActive = false;
+        let isCooldown = false;
+        let clickTimes = [];
+        let currentRound = 0;
+        let startTime = 0;
+        let roundTimer = null;
+        let reactionTimer = null;
+        let gameEnded = false;
+
+        let bestScores = {
+            avg: localStorage.getItem('reactionBestAvg') || '--'
+        };
+
+
+        function getRandomPosition(existingPositions = []) {
+            const containerWidth = gameContainer.offsetWidth;
+            const containerHeight = gameContainer.offsetHeight;
+            const minDistance = SYMBOL_SIZE * 5;
+            
+            let validPosition = false;
+            let x, y;
+            
+            for (let i = 0; i < 100; i++) {
+                x = CONTAINER_PADDING + Math.random() * (containerWidth - 2 * CONTAINER_PADDING);
+                y = CONTAINER_PADDING + Math.random() * (containerHeight - 2 * CONTAINER_PADDING);
+                
+                let overlap = false;
+                for (const pos of existingPositions) {
+                    const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+                    if (distance < minDistance) {
+                        overlap = true;
+                        break;
+                    }
+                }
+                
+                if (!overlap) {
+                    validPosition = true;
+                    break;
+                }
+            }
+            
+            return { x, y };
+        }
+
+
+        function createSymbol(type, x, y) {
+            const symbol = document.createElement('div');
+            symbol.className = 'symbol-circle';
+            symbol.style.left = `${x}px`;
+            symbol.style.top = `${y}px`;
+
+            symbol.style.zIndex = type === 'correct' ? '10' : '2';
+
+            symbol.dataset.type = type;
+            symbol.textContent = type === 'correct' ? '◉' : '◯';
+                    
+                    symbol.addEventListener('click', handleSymbolClick);
+                    symbol.addEventListener('touchstart', (e) => {
+                        e.preventDefault();
+                        handleSymbolClick.call(symbol, e);
+                    }, { passive: false });
+                    
+                    return symbol;
+        }
+
+
+
+        function showSymbols() {
+            if (gameEnded || !gameActive) return;
+            
+            gameContainer.innerHTML = '';
+            
+            const symbolCount = Math.floor(Math.random() * MAX_SYMBOLS) + 3;
+            const correctIndex = Math.floor(Math.random() * symbolCount);
+            
+            progress.textContent = `第 ${currentRound}/${TOTAL_ROUNDS} 轮 | 符号数量: ${symbolCount}`;
+            
+            const positions = [];
+            
+            for (let i = 0; i < symbolCount; i++) {
+                const position = getRandomPosition(positions);
+                positions.push(position);
+                
+                const type = i === correctIndex ? 'correct' : 'wrong';
+                const symbol = createSymbol(type, position.x, position.y);
+                
+                gameContainer.appendChild(symbol);
+                
+                setTimeout(() => {
+                    symbol.classList.add('visible');
+                }, i * 10);
+            }
+            
+            startTime = performance.now();
+            
+            timer.classList.add('visible');
+            timer.textContent = '0 ms';
+            clearInterval(reactionTimer);
+            reactionTimer = setInterval(updateReactionTimer, 10);
+        }
+
+
+        function updateReactionTimer() {
+            if (startTime === 0 || gameEnded || isCooldown) return;
+            const currentTime = performance.now();
+            const elapsed = Math.round(currentTime - startTime);
+            timer.textContent = `${elapsed} ms`;
+        }
+
+
+        function handleSymbolClick(e) {
+            e.preventDefault();
+            
+            if (!gameActive || isCooldown || gameEnded || startTime === 0) return;
+            
+            const symbol = this;
+            const isCorrect = symbol.dataset.type === 'correct';
+            
+            clearInterval(reactionTimer);
+            timer.classList.remove('visible');
+            
+            const allSymbols = document.querySelectorAll('.symbol-circle');
+            allSymbols.forEach(s => {
+                s.classList.add(
+                    s.dataset.type === 'correct' ? 'correct' : 'wrong'
+                );
+            });
+            
+            if (isCorrect) {
+                const currentTime = performance.now();
+                const clickTime = Math.round(currentTime - startTime);
+                clickTimes.push(clickTime);
+                
+                flowTip.textContent = `正确！用时: ${clickTime} ms`;
+                flowTip.className = 'flow-tip text-green';
+                
+                updateCurrentStats();
+                
+                startCooldown();
+                
+                if (currentRound >= TOTAL_ROUNDS) {
+                    endGame();
+                    return;
+                }
+                
+                setTimeout(() => {
+                    currentRound++;
+                    showSymbols();
+                }, COOLDOWN_DURATION);
+            } else {
+                flowTip.textContent = '错误！请点击正确符号，本轮重新开始';
+                flowTip.className = 'flow-tip text-red';
+                
+                startCooldown();
+                
+                setTimeout(() => {
+                    showSymbols();
+                }, COOLDOWN_DURATION);
+            }
+        }
+
+        function startCooldown() {
+            isCooldown = true;
+            startTime = 0;
+            
+            setTimeout(() => {
+                isCooldown = false;
+            }, COOLDOWN_DURATION);
+        }
+
+
+        function startGame() {
+            gameActive = true;
+            isCooldown = false;
+            gameEnded = false;
+            clickTimes = [];
+            currentRound = 1;
+            startTime = 0;
+            
+            clearInterval(reactionTimer);
+            clearTimeout(roundTimer);
+            
+            flowTip.textContent = '测试开始！寻找并点击◉符号';
+            flowTip.className = 'flow-tip text-yellow';
+            timer.classList.remove('visible');
+            updateCurrentStats();
+            
+            setTimeout(() => {
+                showSymbols();
+            }, 500);
+        }
+
+        function endGame() {
+            gameEnded = true;
+            gameActive = false;
+            
+            updateCurrentStats();
+            checkAndUpdateBestScores();
+            
+            flowTip.textContent = `测试结束！完成全部${TOTAL_ROUNDS}轮测试`;
+            flowTip.className = 'flow-tip text-yellow';
+            
+            gameContainer.innerHTML = '';
+            
+            progress.textContent = `测试完成 | 共${TOTAL_ROUNDS}轮`;
+        }
+
+
+        function fullReset() {
+            gameActive = false;
+            isCooldown = false;
+            gameEnded = false;
+            clickTimes = [];
+            currentRound = 0;
+            startTime = 0;
+            
+            clearInterval(reactionTimer);
+            clearTimeout(roundTimer);
+            
+            gameContainer.innerHTML = '';
+            timer.classList.remove('visible');
+            timer.textContent = '';
+            progress.textContent = '';
+            flowTip.textContent = '点击屏幕或按空格键开始测试';
+            flowTip.className = 'flow-tip text-gray';
+            updateCurrentStats();
+        }
+
+
+        function updateCurrentStats() {
+            const avg = clickTimes.length > 0 
+                ? Math.round(clickTimes.reduce((a, b) => a + b, 0) / clickTimes.length) 
+                : '--';
+            
+            currentAvgEl.textContent = avg === '--' ? '-- ms' : `${avg} ms`;
+        }
+
+
+        function updateBestStats() {
+            bestAvgEl.textContent = bestScores.avg === '--' ? '-- ms' : `${bestScores.avg} ms`;
+        }
+
+
+        function checkAndUpdateBestScores() {
+            if (clickTimes.length < TOTAL_ROUNDS) return;
+            
+            const currentAvg = Math.round(clickTimes.reduce((a, b) => a + b, 0) / clickTimes.length);
+
+            if (bestScores.avg === '--' || currentAvg < bestScores.avg) {
+                bestScores.avg = currentAvg;
+                localStorage.setItem('reactionBestAvg', currentAvg);
+            }
+
+            updateBestStats();
+        }
+
+
+        function handleKeydown(e) {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (!gameActive || gameEnded) {
+                    fullReset();
+                    startGame();
+                    return;
+                }
+            }
+        }
+
+
+        function handleInteraction(e) {
+            e.preventDefault();
+            
+            if (isCooldown) return;
+            
+            if (!gameActive || gameEnded) {
+                fullReset();
+                startGame();
+                return;
+            }
+        }
+
+        document.addEventListener('keydown', handleKeydown);
+        document.addEventListener('click', handleInteraction);
+        document.addEventListener('touchstart', handleInteraction, { passive: false });
+        document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+        updateCurrentStats();
+        updateBestStats();
+    </script>
+</body>
+</html>
