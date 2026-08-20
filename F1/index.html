@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="../img/f1.png">
+    <title>F1 发车反应测试</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <style>
+        body { touch-action: manipulation; }
+        .logo-container { margin-bottom:0; text-align:center; }
+        .logo { max-width:300px; height:auto; }
+        .light-container { display:flex; gap:16px; margin-bottom:50px; }
+        .f1-light {
+            width:60px; height:60px; border-radius:50%;
+            background:#333; border:3px solid #444;
+            box-shadow:0 0 10px rgba(0,0,0,0.5);
+            transition:none !important;
+        }
+        .f1-light.active {
+            background:#ff3333; border-color:#ff6666;
+            box-shadow:0 0 20px #ff3333, 0 0 40px #ff3333;
+            transition:none !important;
+        }
+        .f1-light.green {
+            background:#00ff00; border-color:#66ff66;
+            box-shadow:0 0 20px #00ff00, 0 0 40px #00ff00;
+            transition:none !important;
+        }
+        .result-container-f1 {
+            display:flex; flex-direction:column; align-items:center;
+            margin:30px 0; min-height:100px;
+        }
+        .result {
+            font-size:32px; font-weight:700; text-align:center;
+            letter-spacing:1px; margin-bottom:5px;
+        }
+        .timer-f1 {
+            font-size:18px; color:#999; font-weight:600;
+            text-align:center; min-height:25px; opacity:0;
+            transition:opacity 0.1s ease;
+        }
+        .timer-f1.visible { opacity:1; }
+        .tip {
+            font-size:16px; color:#999; margin-bottom:20px;
+            text-align:left; max-width:500px; line-height:1.5;
+        }
+        .mode-switch-group {
+            display:flex; align-items:center; justify-content:center;
+            gap:20px; margin-bottom:30px; padding:10px 20px;
+            background:rgba(255,255,255,0.1); border-radius:25px;
+            border:1px solid rgba(255,255,255,0.2); cursor:pointer; z-index:10;
+        }
+        .mode-switch-item { display:flex; align-items:center; gap:2px; }
+        .switch-label { font-size:16px; color:#999; font-weight:600; pointer-events:none; }
+        .switch { position:relative; display:inline-block; width:48px; height:22px; pointer-events:none; }
+        .switch input { opacity:0; width:0; height:0; }
+        .slider {
+            position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+            background-color:#333; border:2px solid #444; transition:.4s;
+            border-radius:34px; pointer-events:none;
+        }
+        .slider:before {
+            position:absolute; content:""; height:16px; width:16px;
+            left:3px; bottom:2px; background-color:white; transition:.4s;
+            border-radius:50%;
+        }
+        input:checked + .slider { background-color:#00ff00; border-color:#66ff66; }
+        input:checked + .slider:before { transform:translateX(24px); }
+        #soundModeToggle:checked + .slider { background-color:#ff9900; border-color:#ffcc00; }
+        .best-record { font-size:20px; color:#00ff88; margin-top:20px; font-weight:600; }
+        @media (max-width:600px) {
+            .f1-light { width:40px; height:40px; }
+            .light-container { gap:12px; }
+            .logo { max-width:140px; }
+            .result { font-size:34px; }
+            .mode-switch-group { padding:8px 16px; gap:10px; }
+            .switch-label { font-size:14px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo-container">
+        <img src="../img/logo.png" alt="F1 Logo" class="logo">
+    </div>
+
+    <h1 class="title">F1 发车反应测试</h1>
+
+    <div class="light-container">
+        <div class="f1-light"></div>
+        <div class="f1-light"></div>
+        <div class="f1-light"></div>
+        <div class="f1-light"></div>
+        <div class="f1-light"></div>
+    </div>
+
+    <div class="result-container-f1">
+        <div class="result text-gray" id="result">点击屏幕开始</div>
+        <div class="timer-f1" id="timer"></div>
+    </div>
+
+    <div class="tip" id="tip">
+        <strong>规则：</strong>来自真实F1发车信号灯规则<br>
+        5盏红灯依次亮起 → 随机0.5s-3.0s红灯熄灭 → 熄灭瞬间点击<br>
+        提前发车罚时 | 人类极限反应：≥100ms
+    </div>
+
+    <div class="mode-switch-group" id="modeSwitchGroup">
+        <div class="mode-switch-item">
+            <span class="switch-label">绿灯模式：</span>
+            <label class="switch">
+                <input type="checkbox" id="greenModeToggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="mode-switch-item">
+            <span class="switch-label">声音提示：</span>
+            <label class="switch">
+                <input type="checkbox" id="soundModeToggle">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="best-record" id="bestRecord">最快成绩：-- ms</div>
+
+    <script src="../js/F1.js"></script>
+</body>
+</html>

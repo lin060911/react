@@ -1,0 +1,277 @@
+/* ============================================
+   Reaction Lab — 共用样式表
+   ============================================ */
+
+/* ---------- Reset & Base ---------- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+body {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #121212, #1e1e1e);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    padding: 10px;
+    user-select: none;
+    touch-action: none;
+    gap: 10px;
+}
+
+/* ---------- 导航页 ---------- */
+.title {
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    color: #f5f5f5;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+.subtitle {
+    font-size: 14px;
+    color: #999999;
+    margin-bottom: 30px;
+    text-align: center;
+}
+
+.nav-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    width: 100%;
+    max-width: 900px;
+}
+
+.nav-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 4px solid rgba(255, 255, 255, 0.15);
+    border-radius: 16px;
+    padding: 24px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.nav-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 255, 136, 0.2);
+    border-color: rgba(0, 255, 136, 0.4);
+}
+
+.nav-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.nav-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #00ff88;
+    margin-bottom: 6px;
+}
+
+.nav-desc {
+    font-size: 13px;
+    color: #999999;
+    line-height: 1.4;
+}
+
+.footer {
+    margin-top: 40px;
+    font-size: 12px;
+    color: #666666;
+    text-align: center;
+}
+
+/* ---------- 通用测试区域 ---------- */
+.test-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    max-width: 900px;
+    padding: 10px 0;
+    width: 100%;
+}
+
+.flow-tip-container {
+    margin: 10px 0 0 0;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.flow-tip {
+    font-size: 18px;
+    font-weight: 600;
+    text-align: center;
+    letter-spacing: 1px;
+    color: #f5f5f5;
+}
+
+/* ---------- 游戏容器 ---------- */
+.game-container {
+    width: 800px;
+    height: 500px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: 0 0 30px rgba(0,0,0,0.7);
+    overflow: hidden;
+    margin: 20px 0;
+}
+
+/* ---------- 计时器 ---------- */
+.timer {
+    font-size: 14px;
+    color: #999999;
+    font-weight: 600;
+    text-align: center;
+    min-height: 20px;
+    opacity: 0;
+    z-index: 11000;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.timer.visible {
+    opacity: 1;
+}
+
+/* ---------- 进度 ---------- */
+.progress {
+    font-size: 16px;
+    color: #999999;
+    font-weight: 600;
+    text-align: center;
+    min-height: 24px;
+    margin: 10px 0;
+}
+
+/* ---------- 规则提示 ---------- */
+.rule-tip {
+    font-size: 14px;
+    color: #999999;
+    margin-top: 10px;
+    text-align: left;
+    max-width: 600px;
+    line-height: 1.4;
+}
+
+/* ---------- 结果面板 ---------- */
+.result-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 500px;
+    width: 100%;
+    padding: 8px 0;
+    margin-bottom: 10px;
+}
+
+.stats-group {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    width: 100%;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.stats-group-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ccc;
+    margin-bottom: 8px;
+    text-align: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 4px;
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+    width: 100%;
+}
+
+.stats.best {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.stats.single {
+    grid-template-columns: 1fr;
+}
+
+.stat-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 6px 4px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 11px;
+    color: #999;
+    margin-bottom: 3px;
+}
+
+.stat-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: #00ff88;
+}
+
+.stat-value.best {
+    color: #ffcc00;
+}
+
+/* ---------- 文本颜色工具类 ---------- */
+.text-yellow { color: #ffda46; }
+.text-green  { color: #54ffaf; }
+.text-gray    { color: #999999; }
+.text-red     { color: #fd4b4b; }
+.text-orange  { color: #ffab2d; }
+.text-blue    { color: #4f83ff; }
+.text-imp     { color: #f4ff57; font-size: 28px; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1024px) {
+    body { gap: 8px; }
+    .test-area { max-width: 100%; }
+    .result-container { max-width: 100%; width: 100%; padding: 6px 15px; }
+    .title { font-size: 24px; }
+    .flow-tip { font-size: 16px; }
+    .game-container { width: 90%; height: 400px; }
+    .stats-group { padding: 6px 10px; }
+    .stat-value { font-size: 13px; }
+    .rule-tip { font-size: 12px; max-width: 100%; }
+}
+
+@media (max-width: 600px) {
+    .stats { grid-template-columns: 1fr; gap: 4px; }
+    .game-container { height: 300px; }
+    .stats-group { padding: 4px 8px; }
+    .stat-label { font-size: 10px; }
+    .stat-value { font-size: 12px; }
+    .nav-icon { font-size: 40px; }
+    .nav-title { font-size: 16px; }
+}

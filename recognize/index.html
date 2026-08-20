@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="../img/recognize.png">
+    <title>辨别反应测试</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <style>
+        .shape-item {
+            position:absolute; width:100px; height:100px;
+            cursor:pointer; z-index:2;
+            display:flex; align-items:center; justify-content:center;
+            opacity:0; transform-origin:center;
+        }
+        .shape-item.visible { opacity:1; }
+        .shape-circle { width:85px; height:85px; border-radius:50%; }
+        .shape-square { width:80px; height:80px; border-radius:0; }
+        .shape-triangle {
+            width:0; height:0;
+            border-left:50px solid transparent;
+            border-right:50px solid transparent;
+            border-bottom:86.6px solid;
+            background:transparent !important;
+        }
+        .shape-diamond { width:75px; height:75px; transform:rotate(45deg); }
+        .shape-ring {
+            border-radius:50%; border:16px solid;
+            background-color:transparent !important;
+        }
+        .shape-pentagon { clip-path:polygon(50% 0%,100% 38%,82% 100%,18% 100%,0% 38%); }
+        .shape-hexagon { clip-path:polygon(50% 0%,93.3% 25%,93.3% 75%,50% 100%,6.7% 75%,6.7% 25%); }
+        .shape-four-star { clip-path:polygon(50% 0%,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0% 50%,38% 38%); }
+        .shape-five-star { clip-path:polygon(50% 0%,64% 38%,100% 38%,73% 62%,82% 100%,50% 76%,18% 100%,27% 62%,0% 38%,36% 38%); }
+
+        .feedback-overlay {
+            position:absolute; top:0; left:0;
+            width:100%; height:100%; border-radius:50%;
+            opacity:0; pointer-events:none; z-index:3;
+        }
+        .feedback-overlay.correct {
+            background:rgba(0,255,136,0.2);
+            box-shadow:0 0 20px #00ff88cc, inset 0 0 20px #00ff88cc;
+            animation:feedbackPulse 0.6s ease-out;
+        }
+        .feedback-overlay.wrong {
+            background:rgba(253,75,75,0.2);
+            box-shadow:0 0 20px #fd4b4bcc, inset 0 0 20px #fd4b4bcc;
+            animation:feedbackPulse 0.6s ease-out;
+        }
+        @keyframes feedbackPulse {
+            0% { opacity:0; transform:scale(0.5); }
+            50% { opacity:0.6; transform:scale(1.1); }
+            100% { opacity:0; transform:scale(1.5); }
+        }
+        @media (max-width:1024px) {
+            .shape-item { width:80px; height:80px; }
+            .shape-triangle { border-left:40px solid transparent; border-right:40px solid transparent; border-bottom:69.3px solid; }
+            .shape-diamond { width:69.3px; height:69.3px; }
+        }
+        @media (max-width:600px) {
+            .shape-item { width:60px; height:60px; }
+            .shape-triangle { border-left:30px solid transparent; border-right:30px solid transparent; border-bottom:52px solid; }
+            .shape-diamond { width:52px; height:52px; }
+            .shape-ring { border-width:8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-area">
+        <h1 class="title">👁️ 辨别反应测试</h1>
+
+        <div class="timer" id="timer"></div>
+
+        <div class="game-container" id="gameContainer"></div>
+
+        <div class="flow-tip-container">
+            <div class="flow-tip text-gray" id="flowTip">点击屏幕或按空格键开始测试</div>
+        </div>
+
+        <div class="progress" id="progress"></div>
+
+        <div class="rule-tip" id="ruleTip">
+            <strong>规则：</strong><br>
+            1. 测试区域内会随机出现4-8个不同颜色和形状的图形<br>
+            2. 快速找到并点击符合要求的正确图形（如"红色圆形"）<br>
+            3. 总共15组图形，点击正确后自动进入下一组<br>
+            4. 最终统计15组的准确率和正确时的平均点击用时作为成绩<br>
+            5. 点击错误只影响准确率，不影响正确时的反应时间统计
+        </div>
+    </div>
+
+    <div class="result-container">
+        <div class="stats-group">
+            <div class="stats-group-title">本次成绩</div>
+            <div class="stats" id="currentStats">
+                <div class="stat-item">
+                    <div class="stat-label">正确时平均反应时间</div>
+                    <div class="stat-value text-green" id="currentAvg">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">准确率</div>
+                    <div class="stat-value text-green" id="currentAccuracy">-- %</div>
+                </div>
+            </div>
+        </div>
+        <div class="stats-group">
+            <div class="stats-group-title">最佳成绩</div>
+            <div class="stats" id="bestStats">
+                <div class="stat-item">
+                    <div class="stat-label">最佳平均反应时间</div>
+                    <div class="stat-value best" id="bestAvg">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">最佳准确率</div>
+                    <div class="stat-value best" id="bestAccuracy">-- %</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/recognize.js"></script>
+</body>
+</html>

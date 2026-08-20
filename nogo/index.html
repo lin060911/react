@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="../img/nogo.png">
+    <title>Go / No-Go 抑制测试</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <style>
+        body { touch-action: none; }
+        .game-container-nogo {
+            width:800px; height:500px;
+            display:flex; align-items:center; justify-content:center;
+            border-radius:16px;
+            background:rgba(255,255,255,0.03);
+            border:2px solid rgba(255,255,255,0.1);
+            margin:20px 0;
+        }
+        .stimulus-circle {
+            width:260px; height:260px; border-radius:50%;
+            display:flex; align-items:center; justify-content:center;
+            font-size:22px; font-weight:600; cursor:pointer;
+        }
+        .circle-interval {
+            background:rgba(60,120,255,0.35);
+            border:8px solid rgba(60,120,255,0.6);
+            box-shadow:0 0 20px rgba(60,120,255,0.25);
+        }
+        .circle-go {
+            background:rgba(0,255,136,0.25);
+            border:8px solid #00ff88;
+        }
+        .circle-nogo {
+            background:rgba(253,75,75,0.697);
+            border:8px solid #fd4b4b;
+        }
+        .circle-wait {
+            background:rgba(255,255,255,0.08);
+            border:8px solid rgba(255,255,255,0.2);
+        }
+        @media (max-width:1024px) {
+            .game-container-nogo { width:90%; height:420px; }
+            .stimulus-circle { width:200px; height:200px; font-size:18px; }
+        }
+        @media (max-width:600px) {
+            .game-container-nogo { height:320px; }
+            .stimulus-circle { width:160px; height:160px; font-size:16px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-area">
+        <h1 class="title">Go / No-Go 反应抑制测试</h1>
+
+        <div class="flow-tip text-gray" id="flowTip">点击圆形或按空格键开始测试</div>
+
+        <div class="game-container-nogo">
+            <div class="stimulus-circle circle-wait" id="circle">开始</div>
+        </div>
+
+        <div class="progress" id="progress"></div>
+
+        <div class="rule-tip">
+            <strong>规则：</strong><br/>
+            1. 点击圆形开始，将进入测试流程<br/>
+            2. 屏幕会随机出现 <span class="text-green">绿色(GO)</span> 或 <span class="text-red">红色(NO-GO)</span> 圆形<br/>
+            3. 看到 <span class="text-green">绿色(GO)</span> 时，请立即点击<br/>
+            4. 看到 <span class="text-red">红色(NO-GO)</span> 时，<strong>切勿点击</strong><br/>
+            5. 共进行 10 次测试，结束后将显示成绩
+        </div>
+    </div>
+
+    <div class="result-container">
+        <div class="stats-group">
+            <div class="stats-group-title">本次成绩</div>
+            <div class="stats" id="currentStats">
+                <div class="stat-item">
+                    <div class="stat-label">Go 正确率</div>
+                    <div class="stat-value" id="goRate">-- %</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">No-Go 正确率</div>
+                    <div class="stat-value" id="noGoRate">-- %</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">平均反应时间</div>
+                    <div class="stat-value" id="avgRT">-- ms</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-group">
+            <div class="stats-group-title">最佳成绩</div>
+            <div class="stats best">
+                <div class="stat-item">
+                    <div class="stat-label">No-Go 正确率</div>
+                    <div class="stat-value best" id="bestNoGoRate">-- %</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">平均反应时间</div>
+                    <div class="stat-value best" id="bestAvgRT">-- ms</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/nogo.js"></script>
+</body>
+</html>

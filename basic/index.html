@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="../img/basic.png">
+    <title>基础反应测试</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <style>
+        .reaction-circle {
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            color: rgba(255,255,255,0.9);
+        }
+        .reaction-circle.wait {
+            background: rgba(60, 120, 255, 0.35);
+            border: 8px solid rgba(60, 120, 255, 0.6);
+            box-shadow: 0 0 20px rgba(60, 120, 255, 0.25);
+        }
+        .reaction-circle.go {
+            background: rgba(0, 255, 136, 0.25);
+            border: 8px solid #00ff88;
+            box-shadow: 0 0 26px #00ff88cc;
+        }
+        .reaction-circle.tooearly {
+            background: rgba(253, 75, 75, 0.25);
+            border: 8px solid #fd4b4b;
+            box-shadow: 0 0 26px #fd4b4bcc;
+        }
+        @media (max-width: 1024px) {
+            .reaction-circle { width: 200px; height: 200px; font-size: 18px; }
+        }
+        @media (max-width: 600px) {
+            .reaction-circle { width: 160px; height: 160px; font-size: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-area">
+        <h1 class="title">基础反应测试</h1>
+
+        <div class="flow-tip text-gray" id="flowTip">点击圆形或按空格键开始测试</div>
+
+        <div class="game-container">
+            <div class="reaction-circle wait" id="circle">准备</div>
+        </div>
+
+        <div class="progress" id="progress"></div>
+
+        <div class="rule-tip">
+            <strong>规则：</strong><br/>
+            1. 点击圆形开始，圆形变为蓝色"等待"状态<br/>
+            2. 随机等待后突变为绿色，看到绿色立即点击<br/>
+            3. 若绿色出现前点击，记为"提前点击"，该次无效<br/>
+            4. 默认 5 次为一组，结束后将给出平均反应时间
+        </div>
+    </div>
+
+    <div class="result-container">
+        <div class="stats-group">
+            <div class="stats-group-title">本次成绩</div>
+            <div class="stats single" id="currentStats">
+                <div class="stat-item">
+                    <div class="stat-label">平均反应时间</div>
+                    <div class="stat-value text-green" id="currentAvg">-- ms</div>
+                </div>
+            </div>
+        </div>
+        <div class="stats-group">
+            <div class="stats-group-title">最佳成绩</div>
+            <div class="stats single" id="bestStats">
+                <div class="stat-item">
+                    <div class="stat-label">最佳平均反应时间</div>
+                    <div class="stat-value best" id="bestAvg">-- ms</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/basic.js"></script>
+</body>
+</html>

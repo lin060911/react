@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="../img/balls.png">
+    <title>定位反应测试</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <style>
+        .symbol-circle {
+            position:absolute; width:100px; height:100px;
+            border-radius:50%; background:rgba(255,255,255,0.1);
+            top:50%; left:50%; transform:translate(-50%,-50%);
+            box-shadow:0 0 20px rgba(255,255,255,0.1);
+            cursor:pointer; z-index:2;
+            display:flex; align-items:center; justify-content:center;
+            font-size:95px; opacity:0;
+            transition:opacity 0.1s ease;
+            border:8px solid rgba(255,255,255,0.2);
+            line-height:1; padding-bottom:5px;
+        }
+        .symbol-circle.visible { opacity:1; }
+        .symbol-circle.correct {
+            background:rgba(0,255,136,0.2); border-color:#00ff88;
+            box-shadow:0 0 20px #00ff88cc; z-index:999;
+        }
+        .symbol-circle.wrong {
+            background:rgba(253,75,75,0.2); border-color:#fd4b4b;
+            box-shadow:0 0 20px #fd4b4bcc;
+        }
+        @media (max-width:1024px) {
+            .symbol-circle { width:50px; height:50px; font-size:24px; }
+        }
+        @media (max-width:600px) {
+            .symbol-circle { width:40px; height:40px; font-size:20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-area">
+        <h1 class="title">🎯 定位反应测试</h1>
+
+        <div class="timer" id="timer"></div>
+
+        <div class="game-container" id="gameContainer"></div>
+
+        <div class="flow-tip-container">
+            <div class="flow-tip text-gray" id="flowTip">点击屏幕或按空格键开始测试</div>
+        </div>
+
+        <div class="progress" id="progress"></div>
+
+        <div class="rule-tip" id="ruleTip">
+            <strong>规则：</strong><br>
+            1. 游戏容器内会随机出现3-5个圆形符号，其中只有1个是◉（正确），其余为◯（错误）<br>
+            2. 快速找到并点击唯一的◉符号<br>
+            3. 总共15组符号，点击正确后自动进入下一组<br>
+            4. 最终统计15组的平均点击用时作为成绩
+        </div>
+    </div>
+
+    <div class="result-container">
+        <div class="stats-group">
+            <div class="stats-group-title">成绩</div>
+            <div class="stats single" id="currentStats">
+                <div class="stat-item">
+                    <div class="stat-label">本次平均反应时间</div>
+                    <div class="stat-value text-green" id="currentAvg">-- ms</div>
+                </div>
+            </div>
+            <div class="stats single" id="bestStats">
+                <div class="stat-item">
+                    <div class="stat-label">最佳平均反应时间</div>
+                    <div class="stat-value best" id="bestAvg">-- ms</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/balls.js"></script>
+</body>
+</html>

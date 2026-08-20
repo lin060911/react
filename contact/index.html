@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="../img/react.png">
+    <title>敬请期待</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <style>
+        body {
+            touch-action: manipulation;
+        }
+        .coming-soon-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+            text-align: center;
+        }
+        .coming-soon-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: bounce 2s ease-in-out infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+        .coming-soon-title {
+            font-size: 28px;
+            color: #00ff88;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+        }
+        .coming-soon-desc {
+            font-size: 16px;
+            color: #999999;
+            max-width: 400px;
+            line-height: 1.6;
+        }
+        .back-btn {
+            margin-top: 30px;
+            padding: 12px 30px;
+            background: rgba(0, 255, 136, 0.15);
+            border: 2px solid #00ff88;
+            border-radius: 25px;
+            color: #00ff88;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+        .back-btn:hover {
+            background: rgba(0, 255, 136, 0.3);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0, 255, 136, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="coming-soon-container">
+        <div class="coming-soon-icon">🧑‍💻</div>
+        <h1 class="coming-soon-title">敬请期待</h1>
+        <p class="coming-soon-desc">
+            更多反应测试项目正在开发中<br>
+            敬请期待更新！
+        </p>
+        <a href="../index.html" class="back-btn">← 返回主页</a>
+    </div>
+</body>
+</html>

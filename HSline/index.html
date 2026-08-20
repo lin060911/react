@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/png" sizes="32x32" href="../img/hs.png">
+    <title>头线定位测试</title>
+    <link rel="stylesheet" href="../CSS/style.css">
+    <style>
+        body { touch-action: none; }
+        .target-container {
+            width: 1480px; height: 120px;
+            display:flex; align-items:center; justify-content:flex-start;
+            position:relative;
+            border:1px solid rgba(255,255,255,0.1);
+            border-radius:16px;
+            background:rgba(255,255,255,0.03);
+            box-shadow:0 0 30px rgba(0,0,0,0.7);
+            overflow:hidden;
+        }
+        .head-line {
+            position:absolute; width:100%; height:1px;
+            background:#3c76ff; top:50%; left:0;
+            transform:translateY(-50%); z-index:1;
+        }
+        .target-ball {
+            position:absolute; width:30px; height:30px;
+            border-radius:50%; background:#ffeb3c;
+            border:4px solid #54ffaf;
+            top:50%; transform:translate(-50%,-50%);
+            box-shadow:0 0 20px #ffb247cc;
+            cursor:crosshair; z-index:2;
+            opacity:0; transition:opacity 0.1s ease;
+        }
+        .target-ball.visible { opacity:1; }
+        .timer-hs {
+            font-size:14px; color:#999; font-weight:600;
+            text-align:center; min-height:20px; opacity:0;
+            margin:30px 0;
+        }
+        .timer-hs.visible { opacity:1; }
+        @media (max-width:1024px) {
+            .target-container { height:100px; }
+            .target-ball { width:35px; height:35px; }
+        }
+        @media (max-width:600px) {
+            .target-container { height:80px; }
+            .target-ball { width:30px; height:30px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="test-area">
+        <h1 class="title">🤕 头线定位测试</h1>
+
+        <div class="flow-tip-container">
+            <div class="flow-tip text-gray" id="flowTip">点击屏幕或按空格键开始测试</div>
+        </div>
+
+        <div class="timer-hs" id="timer"></div>
+
+        <div class="target-container" id="targetContainer">
+            <div class="head-line"></div>
+            <div class="target-ball" id="targetBall"></div>
+        </div>
+
+        <div class="rule-tip" id="ruleTip">
+            <strong>规则：</strong><br>
+            1. 水平头线上会随机出现小球<br>
+            2. 快速移动鼠标点击小球，模拟FPS游戏头线定位<br>
+            3. 测试从首次小球出现开始，直到反应超时结束<br>
+            4. 超过1000ms未点击将判定为超时<br>
+            5. 最终统计最快点击时间、平均点击时间和正确次数
+        </div>
+    </div>
+
+    <div class="result-container">
+        <div class="stats-group">
+            <div class="stats-group-title">本次成绩</div>
+            <div class="stats" id="currentStats">
+                <div class="stat-item">
+                    <div class="stat-label">最快点击时间</div>
+                    <div class="stat-value text-green" id="currentFastest">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">平均点击时间</div>
+                    <div class="stat-value text-orange" id="currentAvg">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">正确次数</div>
+                    <div class="stat-value text-yellow" id="currentCorrect">0</div>
+                </div>
+            </div>
+        </div>
+        <div class="stats-group">
+            <div class="stats-group-title">最佳成绩</div>
+            <div class="stats" id="bestStats">
+                <div class="stat-item">
+                    <div class="stat-label">最快点击时间</div>
+                    <div class="stat-value best" id="bestFastest">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">平均点击时间</div>
+                    <div class="stat-value best" id="bestAvg">-- ms</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">正确次数</div>
+                    <div class="stat-value best" id="bestCorrect">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../js/HSline.js"></script>
+</body>
+</html>
