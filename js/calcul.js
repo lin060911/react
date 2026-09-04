@@ -137,6 +137,7 @@
     function handleDigitInput(digit) {
         if (!gameActive || !calcStartTime) return;
         const calcTime = stopCalcTimer();
+        calcStartTime = 0;
         calcTimes.push(calcTime);
 
         if (parseInt(digit) === correctDigit) {
