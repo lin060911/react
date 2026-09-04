@@ -10,7 +10,7 @@
     const MIN_DELAY = 2000;
     const MAX_DELAY = 4000;
 
-    let state = 'idle'; // idle | waiting | go | early
+    let state = 'idle'; 
     let currentRound = 0;
     let times = [];
     let goStartTime = 0;
@@ -110,6 +110,9 @@
             const rt = Math.round(performance.now() - goStartTime);
             times.push(rt);
             updateCurrentAvg();
+
+            state = 'result';
+            goStartTime = 0;
 
             circle.textContent = `${rt} ms`;
             flowTip.textContent = `反应时间：${rt} ms`;
