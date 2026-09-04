@@ -22,6 +22,9 @@
     let isGreenMode = false;
     let isSoundMode = false;
 
+    let lastTouchTime = -Infinity;
+    const TOUCH_THROTTLE = 250;
+
     let audioContext;
     function initAudio() {
         if (!audioContext) {
@@ -159,10 +162,16 @@
     }
 
     function handleInteraction(e) {
-        if (e.target.closest('.mode-switch-group')) return;
+        if (e.target && e.target.closest && e.target.closest('.mode-switch-group')) return;
         e.preventDefault();
         if (isCooldown) return;
         isTouchEvent = e.type === 'touchstart';
+
+        if (isTouchEvent) {
+            const now = performance.now();
+            if (now - lastTouchTime < TOUCH_THROTTLE) return;
+            lastTouchTime = now;
+        }
 
         if (!testActive) {
             if (isTouchEvent) {
@@ -214,7 +223,8 @@
     document.addEventListener('click', handleInteraction);
     document.addEventListener('touchstart', handleInteraction, { passive: false });
     document.addEventListener('keydown', (e) => {
-        if (e.code === 'Space') handleInteraction(e);
+        if (e.code !== 'Space' || e.repeat) return;
+        handleInteraction(e);
     });
     document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
