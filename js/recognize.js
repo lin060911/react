@@ -1,294 +1,253 @@
-/* recognize.js — 辨别反应测试 */
+/* ============================================================
+   recognize.js — 辨别反应测试（按颜色 + 形状锁定目标图形）
+   计时规则：以「本组图形真正绘制到屏幕」的那一帧为起点。
+   统计口径：一组 = 一次点击。点错同样消耗一组，只影响准确率，
+             因此准确率恒等于 正确数 / 总组数，不可能超过 100%。
+   ============================================================ */
 (function () {
-    const gameContainer = document.getElementById('gameContainer');
-    const flowTip = document.getElementById('flowTip');
-    const timer = document.getElementById('timer');
-    const progress = document.getElementById('progress');
+    'use strict';
 
-    const currentAvgEl = document.getElementById('currentAvg');
-    const currentAccuracyEl = document.getElementById('currentAccuracy');
-    const bestAvgEl = document.getElementById('bestAvg');
-    const bestAccuracyEl = document.getElementById('bestAccuracy');
+    var box      = RL.$('gameContainer');
+    var timerEl  = RL.$('timer');
+    var flowTip  = RL.Tip(RL.$('flowTip'));
+    var progress = RL.$('progress');
 
-    const MIN_SHAPES = 4;
-    const MAX_SHAPES = 8;
-    const TOTAL_ROUNDS = 15;
-    const SHAPE_SIZE = 100;
-    const CONTAINER_PADDING = 80;
-    const COOLDOWN_DURATION = 500;
+    var currentAvgEl       = RL.$('currentAvg');
+    var currentAccuracyEl  = RL.$('currentAccuracy');
+    var currentCountEl     = RL.$('currentCount');
+    var bestAvgEl          = RL.$('bestAvg');
+    var bestAccuracyEl     = RL.$('bestAccuracy');
 
-    const SHAPES = [
-        { name: '圆形', className: 'shape-circle' },
-        { name: '正方形', className: 'shape-square' },
-        { name: '三角形', className: 'shape-triangle' },
-        { name: '菱形', className: 'shape-diamond' },
-        { name: '圆环', className: 'shape-ring' },
-        { name: '五边形', className: 'shape-pentagon' },
-        { name: '六边形', className: 'shape-hexagon' },
-        { name: '四角星', className: 'shape-four-star' },
-        { name: '五角星', className: 'shape-five-star' },
+    var SHAPES = [
+        { name: '圆形', cls: 'shape-circle' },
+        { name: '正方形', cls: 'shape-square' },
+        { name: '三角形', cls: 'shape-triangle' },
+        { name: '菱形', cls: 'shape-diamond' },
+        { name: '圆环', cls: 'shape-ring' },
+        { name: '五边形', cls: 'shape-pentagon' },
+        { name: '六边形', cls: 'shape-hexagon' },
+        { name: '四角星', cls: 'shape-four-star' },
+        { name: '五角星', cls: 'shape-five-star' }
     ];
-
-    const COLORS = [
+    var COLORS = [
         { name: '红色', value: '#fd4b4b' },
         { name: '橙色', value: '#ff8f49' },
         { name: '黄色', value: '#f4ff57' },
         { name: '绿色', value: '#3eff48' },
         { name: '蓝色', value: '#3f88fd' },
-        { name: '白色', value: '#f0f0f0' },
+        { name: '白色', value: '#f0f0f0' }
     ];
 
-    let gameActive = false;
-    let isCooldown = false;
-    let correctTimes = [];
-    let currentRound = 0;
-    let startTime = 0;
-    let reactionTimer = null;
-    let gameEnded = false;
-    let correctCount = 0;
+    var TOTAL_ROUNDS = 15;
+    var MIN_SHAPES = 4;
+    var MAX_SHAPES = 8;
+    var COOLDOWN = 420;
 
-    let targetColor = null;
-    let targetShape = null;
+    var sw = RL.Stopwatch(timerEl);
 
-    let bestScores = {
-        avg: localStorage.getItem('discriminationBestAvg') || '--',
-        accuracy: localStorage.getItem('discriminationBestAccuracy') || '--'
+    var playing = false;
+    var armed = false;        // 本组图形已上屏，处于可测量状态
+    var cooling = false;
+    var ended = false;
+    var round = 0;            // 已完成组数（对错都算）
+    var hitTimes = [];        // 仅正确时的用时
+    var hitCount = 0;         // 正确组数
+    var pending = null;
+    var target = null;
+
+    var best = {
+        avg: RL.store.get('recognize.avg', 'discriminationBestAvg'),
+        accuracy: RL.store.get('recognize.accuracy', 'discriminationBestAccuracy')
     };
 
-    function getRandomPosition(existingPositions = []) {
-        const containerWidth = gameContainer.offsetWidth;
-        const containerHeight = gameContainer.offsetHeight;
-        const minDistance = SHAPE_SIZE * 1.5;
-        let x, y;
-        for (let i = 0; i < 100; i++) {
-            x = CONTAINER_PADDING + Math.random() * (containerWidth - 2 * CONTAINER_PADDING);
-            y = CONTAINER_PADDING + Math.random() * (containerHeight - 2 * CONTAINER_PADDING);
-            let overlap = false;
-            for (const pos of existingPositions) {
-                const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
-                if (distance < minDistance) { overlap = true; break; }
+    /* ---------- 渲染 ---------- */
+    function renderCurrent() {
+        currentAvgEl.textContent = RL.fmtMs(RL.avg(hitTimes));
+        var acc = round > 0 ? (hitCount / round) * 100 : null;
+        currentAccuracyEl.textContent = RL.fmtPct(acc);
+        currentCountEl.textContent = round + ' / ' + TOTAL_ROUNDS;
+    }
+
+    function renderBest() {
+        bestAvgEl.textContent = RL.fmtMs(best.avg);
+        bestAccuracyEl.textContent = RL.fmtPct(best.accuracy);
+    }
+
+    /* 图形尺寸跟着舞台一起放大（舞台现在占屏幕大部分高度） */
+    function shapeSize() {
+        var w = box.clientWidth || 1180;
+        return Math.round(Math.max(52, Math.min(118, w / 11)));
+    }
+
+    /* ---------- 一组 ---------- */
+    function clearStage() {
+        var nodes = box.querySelectorAll('.shape');
+        for (var i = 0; i < nodes.length; i++) nodes[i].remove();
+    }
+
+    function buildShape(shape, color, isCorrect, size) {
+        var node = document.createElement('div');
+        node.className = 'shape ' + shape.cls;
+        node.dataset.correct = isCorrect ? 'true' : 'false';
+
+        if (shape.cls === 'shape-triangle') {
+            node.style.borderLeftWidth = (size / 2) + 'px';
+            node.style.borderRightWidth = (size / 2) + 'px';
+            node.style.borderBottomWidth = (size * 0.87) + 'px';
+            node.style.borderBottomColor = color.value;
+        } else if (shape.cls === 'shape-ring') {
+            node.style.width = size + 'px';
+            node.style.height = size + 'px';
+            node.style.borderWidth = Math.max(6, Math.round(size * 0.16)) + 'px';
+            node.style.borderColor = color.value;
+        } else {
+            node.style.width = size + 'px';
+            node.style.height = size + 'px';
+            node.style.backgroundColor = color.value;
+        }
+        return node;
+    }
+
+    function showRound() {
+        if (!playing) return;
+        clearStage();
+        armed = false;
+        sw.reset();
+
+        var count = RL.randInt(MIN_SHAPES, MAX_SHAPES);
+        var tColor = RL.pick(COLORS);
+        var tShape = RL.pick(SHAPES);
+        target = { color: tColor, shape: tShape };
+
+        var size = shapeSize();
+        var pts = RL.scatter(box, count, size);
+
+        flowTip('选择 [ ' + tColor.name + ' ] 的 [ ' + tShape.name + ' ]', 'imp');
+        progress.textContent = '第 ' + (round + 1) + ' / ' + TOTAL_ROUNDS + ' 组 · 图形 ' + count + ' 个';
+
+        var correctIndex = RL.randInt(0, count - 1);
+        for (var i = 0; i < count; i++) {
+            var isCorrect = (i === correctIndex);
+            var shape, color;
+            if (isCorrect) {
+                shape = tShape;
+                color = tColor;
+            } else {
+                /* 干扰项：不允许与目标完全相同 */
+                do {
+                    shape = RL.pick(SHAPES);
+                    color = RL.pick(COLORS);
+                } while (shape.name === tShape.name && color.name === tColor.name);
             }
-            if (!overlap) return { x, y };
-        }
-        return { x, y };
-    }
 
-    function createShape(shapeObj, colorObj, isCorrect, x, y) {
-        const shape = document.createElement('div');
-        shape.className = `shape-item ${shapeObj.className}`;
-        shape.style.left = `${x}px`;
-        shape.style.top = `${y}px`;
-
-        if (shapeObj.className === 'shape-triangle') {
-            shape.style.borderBottomColor = colorObj.value;
-        } else if (shapeObj.className === 'shape-ring') {
-            shape.style.borderColor = colorObj.value;
-        } else {
-            shape.style.backgroundColor = colorObj.value;
+            var node = buildShape(shape, color, isCorrect, size);
+            node.style.left = pts[i].x + 'px';
+            node.style.top = pts[i].y + 'px';
+            node.addEventListener('click', onClick);
+            node.addEventListener('touchstart', function (e) {
+                e.preventDefault();
+                onClick.call(this, e);
+            }, { passive: false });
+            /* 直接插入即可见：不使用淡入 / 缩放动画，避免影响反应计时 */
+            box.appendChild(node);
         }
 
-        shape.dataset.color = colorObj.name;
-        shape.dataset.shape = shapeObj.name;
-        shape.dataset.correct = isCorrect;
-
-        const feedbackOverlay = document.createElement('div');
-        feedbackOverlay.className = 'feedback-overlay';
-        shape.appendChild(feedbackOverlay);
-
-        shape.addEventListener('click', handleShapeClick);
-        shape.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            handleShapeClick.call(shape, e);
-        }, { passive: false });
-
-        return shape;
-    }
-
-    function showShapes() {
-        if (gameEnded || !gameActive) return;
-        gameContainer.innerHTML = '';
-
-        targetColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-        targetShape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
-        const shapeCount = Math.floor(Math.random() * (MAX_SHAPES - MIN_SHAPES + 1)) + MIN_SHAPES;
-
-        flowTip.textContent = `选择[ ${targetColor.name} ]的[ ${targetShape.name} ]!!!`;
-        flowTip.className = 'flow-tip text-imp';
-        progress.textContent = `第 ${currentRound}/${TOTAL_ROUNDS} 轮 | 图形数量: ${shapeCount}`;
-
-        const positions = [];
-        const correctPosition = getRandomPosition(positions);
-        positions.push(correctPosition);
-        const correctShape = createShape(targetShape, targetColor, true, correctPosition.x, correctPosition.y);
-        gameContainer.appendChild(correctShape);
-
-        for (let i = 1; i < shapeCount; i++) {
-            let randomColor, randomShape;
-            do {
-                randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-                randomShape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
-            } while (randomColor.name === targetColor.name && randomShape.name === targetShape.name);
-
-            const position = getRandomPosition(positions);
-            positions.push(position);
-            const shape = createShape(randomShape, randomColor, false, position.x, position.y);
-            gameContainer.appendChild(shape);
-        }
-
-        const shapes = document.querySelectorAll('.shape-item');
-        shapes.forEach((shape, index) => {
-            setTimeout(() => shape.classList.add('visible'), index * 10);
+        /* 关键：起点取「图形已上屏」那一帧的时间戳 */
+        RL.afterPaint(function (ts) {
+            if (!playing || ended || armed) return;
+            armed = true;
+            sw.mark(ts || performance.now());
         });
-
-        startTime = performance.now();
-        timer.classList.add('visible');
-        timer.textContent = '0 ms';
-        clearInterval(reactionTimer);
-        reactionTimer = setInterval(updateReactionTimer, 10);
     }
 
-    function updateReactionTimer() {
-        if (startTime === 0 || gameEnded || isCooldown) return;
-        timer.textContent = `${Math.round(performance.now() - startTime)} ms`;
-    }
+    function onClick(e) {
+        e.stopPropagation();
+        if (!playing || cooling || ended) return;
+        if (!armed) return;                 // 未上屏的点击不计入成绩
 
-    function handleShapeClick(e) {
-        e.preventDefault();
-        if (!gameActive || isCooldown || gameEnded || startTime === 0) return;
+        var cost = sw.stop();
+        armed = false;
+        var isCorrect = this.dataset.correct === 'true';
+        this.classList.add(isCorrect ? 'correct' : 'wrong');
 
-        const shape = this;
-        const isCorrect = shape.dataset.correct === 'true';
-        clearInterval(reactionTimer);
-        timer.classList.remove('visible');
-
-        const feedbackOverlay = shape.querySelector('.feedback-overlay');
-        if (feedbackOverlay) {
-            feedbackOverlay.classList.add(isCorrect ? 'correct' : 'wrong');
-        }
-
+        round++;
         if (isCorrect) {
-            const clickTime = Math.round(performance.now() - startTime);
-            correctTimes.push(clickTime);
-            correctCount++;
-            flowTip.textContent = `正确！用时: ${clickTime} ms`;
-            flowTip.className = 'flow-tip text-green';
+            hitTimes.push(cost);
+            hitCount++;
+            flowTip('正确！用时 ' + cost + ' ms', 'green');
         } else {
-            flowTip.textContent = `错误！目标: ${targetColor.name}的${targetShape.name}`;
-            flowTip.className = 'flow-tip text-red';
+            flowTip('错误！目标：' + target.color.name + '的' + target.shape.name, 'red');
         }
+        renderCurrent();
 
-        updateCurrentStats();
-        startCooldown();
-
-        if (currentRound >= TOTAL_ROUNDS) {
-            setTimeout(endGame, COOLDOWN_DURATION);
-            return;
-        }
-        setTimeout(() => { currentRound++; showShapes(); }, COOLDOWN_DURATION);
+        cooling = true;
+        if (round >= TOTAL_ROUNDS) { pending = setTimeout(finish, COOLDOWN); return; }
+        pending = setTimeout(function () { cooling = false; showRound(); }, COOLDOWN);
     }
 
-    function startCooldown() {
-        isCooldown = true;
-        startTime = 0;
-        setTimeout(() => { isCooldown = false; }, COOLDOWN_DURATION);
-    }
-
+    /* ---------- 流程 ---------- */
     function startGame() {
-        gameActive = true;
-        isCooldown = false;
-        gameEnded = false;
-        correctTimes = [];
-        correctCount = 0;
-        currentRound = 1;
-        startTime = 0;
-        clearInterval(reactionTimer);
-        flowTip.textContent = '测试开始！寻找并点击目标图形';
-        flowTip.className = 'flow-tip text-yellow';
-        timer.classList.remove('visible');
-        updateCurrentStats();
-        setTimeout(() => showShapes(), 500);
-    }
-
-    function endGame() {
-        gameEnded = true;
-        gameActive = false;
-        updateCurrentStats();
-        checkAndUpdateBestScores();
-        flowTip.textContent = `测试结束！完成全部${TOTAL_ROUNDS}轮测试`;
-        flowTip.className = 'flow-tip text-yellow';
-        gameContainer.innerHTML = '';
-        progress.textContent = `测试完成 | 共${TOTAL_ROUNDS}轮`;
-    }
-
-    function fullReset() {
-        gameActive = false;
-        isCooldown = false;
-        gameEnded = false;
-        correctTimes = [];
-        correctCount = 0;
-        currentRound = 0;
-        startTime = 0;
-        clearInterval(reactionTimer);
-        gameContainer.innerHTML = '';
-        timer.classList.remove('visible');
-        timer.textContent = '';
+        clearTimeout(pending);
+        playing = true;
+        armed = false;
+        ended = false;
+        cooling = false;
+        round = 0;
+        hitTimes = [];
+        hitCount = 0;
+        sw.reset();
+        clearStage();
+        renderCurrent();
         progress.textContent = '';
-        flowTip.textContent = '点击屏幕或按空格键开始测试';
-        flowTip.className = 'flow-tip text-gray';
-        updateCurrentStats();
+        flowTip('测试开始！寻找目标图形', 'yellow');
+        pending = setTimeout(showRound, 420);
     }
 
-    function updateCurrentStats() {
-        const avg = correctTimes.length > 0
-            ? Math.round(correctTimes.reduce((a, b) => a + b, 0) / correctTimes.length)
-            : '--';
-        const accuracy = currentRound > 0
-            ? Math.round((correctCount / currentRound) * 100)
-            : '--';
-        currentAvgEl.textContent = avg === '--' ? '-- ms' : `${avg} ms`;
-        currentAccuracyEl.textContent = accuracy === '--' ? '-- %' : `${accuracy} %`;
+    function abort(reason) {
+        clearTimeout(pending);
+        playing = false;
+        armed = false;
+        cooling = false;
+        ended = true;
+        sw.reset();
+        clearStage();
+        progress.textContent = '';
+        flowTip(reason + ' · 按空格或点击屏幕重新开始', 'red');
     }
 
-    function updateBestStats() {
-        bestAvgEl.textContent = bestScores.avg === '--' ? '-- ms' : `${bestScores.avg} ms`;
-        bestAccuracyEl.textContent = bestScores.accuracy === '--' ? '-- %' : `${bestScores.accuracy} %`;
+    function finish() {
+        playing = false;
+        armed = false;
+        ended = true;
+        cooling = false;      // 必须解锁，否则结束后点击 / 空格永远无法重开
+        clearStage();
+        sw.reset();
+
+        var a = RL.avg(hitTimes);
+        /* 准确率 = 正确组数 / 实际完成组数，天然不超过 100% */
+        var acc = round > 0 ? (hitCount / round) * 100 : null;
+        if (a !== null) best.avg = RL.betterLower(best.avg, a);
+        if (acc !== null) best.accuracy = RL.betterHigher(best.accuracy, acc);
+        if (a !== null) RL.store.set('recognize.avg', Math.round(best.avg));
+        if (acc !== null) RL.store.set('recognize.accuracy', Math.round(best.accuracy));
+        renderBest();
+
+        progress.textContent = '测试完成 · 共 ' + round + ' 组';
+        flowTip('测试结束！准确率 ' + Math.round(acc || 0) + '% · 按空格或点击屏幕重来', 'yellow');
     }
 
-    function checkAndUpdateBestScores() {
-        if (currentRound < TOTAL_ROUNDS) return;
-        const currentAvg = correctTimes.length > 0
-            ? Math.round(correctTimes.reduce((a, b) => a + b, 0) / correctTimes.length)
-            : '--';
-        const currentAccuracy = Math.round((correctCount / TOTAL_ROUNDS) * 100);
+    /* ---------- 失焦保护 ---------- */
+    RL.onFocusLost(function () {
+        if (!playing && !cooling) return;
+        abort('检测到切换窗口 · 本次作废');
+    });
 
-        if (bestScores.avg === '--' || (currentAvg !== '--' && currentAvg < bestScores.avg)) {
-            bestScores.avg = currentAvg;
-            localStorage.setItem('discriminationBestAvg', currentAvg);
-        }
-        if (bestScores.accuracy === '--' || currentAccuracy > bestScores.accuracy) {
-            bestScores.accuracy = currentAccuracy;
-            localStorage.setItem('discriminationBestAccuracy', currentAccuracy);
-        }
-        updateBestStats();
-    }
+    RL.onActivate(function () {
+        if (cooling) return;
+        if (playing) return;
+        startGame();
+    });
 
-    function handleKeydown(e) {
-        if (e.code === 'Space') {
-            e.preventDefault();
-            if (!gameActive || gameEnded) { fullReset(); startGame(); }
-        }
-    }
-
-    function handleInteraction(e) {
-        e.preventDefault();
-        if (isCooldown) return;
-        if (!gameActive || gameEnded) { fullReset(); startGame(); }
-    }
-
-    document.addEventListener('keydown', handleKeydown);
-    document.addEventListener('click', handleInteraction);
-    document.addEventListener('touchstart', handleInteraction, { passive: false });
-
-    updateCurrentStats();
-    updateBestStats();
+    renderCurrent();
+    renderBest();
 })();

@@ -1,219 +1,206 @@
-/* arrow.js — 箭头反应测试 */
+/* ============================================================
+   arrow.js — 箭头反应测试（方向键 / WASD / 滑动）
+   计时规则：以「箭头真正绘制到屏幕」的那一帧为起点。
+   ============================================================ */
 (function () {
-    const arrow = document.getElementById('arrow');
-    const flowTip = document.getElementById('flowTip');
-    const timer = document.getElementById('timer');
+    'use strict';
 
-    const currentFastestEl = document.getElementById('currentFastest');
-    const currentAvgEl = document.getElementById('currentAvg');
-    const currentCorrectEl = document.getElementById('currentCorrect');
-    const bestFastestEl = document.getElementById('bestFastest');
-    const bestAvgEl = document.getElementById('bestAvg');
-    const bestCorrectEl = document.getElementById('bestCorrect');
+    var arrowEl  = RL.$('arrow');
+    var timerEl  = RL.$('timer');
+    var flowTip  = RL.Tip(RL.$('flowTip'));
+    var progress = RL.$('progress');
 
-    const DIRECTIONS = ['up', 'down', 'left', 'right'];
-    const KEY_MAPPING = {
-        up: ['ArrowUp', 'KeyW'],
-        down: ['ArrowDown', 'KeyS'],
-        left: ['ArrowLeft', 'KeyA'],
-        right: ['ArrowRight', 'KeyD']
-    };
-    const MIN_DELAY = 20;
-    const MAX_DELAY = 200;
-    const TOUCH_DELAY = 0;
-    const TIMEOUT_DURATION = 600;
+    var currentFastestEl = RL.$('currentFastest');
+    var currentAvgEl     = RL.$('currentAvg');
+    var currentCorrectEl = RL.$('currentCorrect');
+    var bestFastestEl    = RL.$('bestFastest');
+    var bestAvgEl        = RL.$('bestAvg');
+    var bestCorrectEl    = RL.$('bestCorrect');
 
-    let testActive = false;
-    let isCooldown = false;
-    let currentDirection = '';
-    let reactionTimes = [];
-    let startTime = 0;
-    let arrowTimer = null;
-    let reactionTimer = null;
-    let testEnded = false;
-    let timeoutTimer = null;
-
-    let bestScores = {
-        fastest: localStorage.getItem('bestFastest') || '--',
-        avg: localStorage.getItem('bestAvg') || '--',
-        correct: localStorage.getItem('bestCorrect') || 0
+    var DIRECTIONS = ['up', 'down', 'left', 'right'];
+    var SYMBOLS = { up: '▲', down: '▼', left: '◀', right: '▶' };
+    var KEY_MAP = {
+        ArrowUp: 'up', KeyW: 'up',
+        ArrowDown: 'down', KeyS: 'down',
+        ArrowLeft: 'left', KeyA: 'left',
+        ArrowRight: 'right', KeyD: 'right'
     };
 
-    function getRandomDirection() {
-        return DIRECTIONS[Math.floor(Math.random() * DIRECTIONS.length)];
+    var MIN_DELAY = 220;
+    var MAX_DELAY = 620;
+    var TIMEOUT = 600;
+    var COOLDOWN = 320;
+    var SWIPE_THRESHOLD = 28;
+
+    var sw = RL.Stopwatch(timerEl);
+
+    var playing = false;      // 箭头在场，可作答
+    var running = false;      // 整场测试进行中（含箭头之间的间隔）
+    var armed = false;        // 箭头已上屏，处于可测量状态
+    var direction = '';
+    var times = [];
+    var nextTimer = null;
+    var timeoutTimer = null;
+    var msgTimer = null;
+    var touchOrigin = null;
+
+    var best = {
+        fastest: RL.store.get('arrow.fastest', 'bestFastest'),
+        avg: RL.store.get('arrow.avg', 'bestAvg'),
+        correct: RL.store.get('arrow.correct', 'bestCorrect') || 0
+    };
+
+    /* ---------- 渲染 ---------- */
+    function renderArrow(dir) {
+        if (!dir) { arrowEl.className = 'arrow hidden'; arrowEl.textContent = ''; return; }
+        /* 状态瞬时切换：箭头不做淡入 / 缩放过渡 */
+        arrowEl.className = 'arrow ' + dir;
+        arrowEl.textContent = SYMBOLS[dir];
     }
 
-    function fullReset() {
-        testActive = false;
-        isCooldown = false;
-        testEnded = false;
-        currentDirection = '';
-        reactionTimes = [];
-        startTime = 0;
-        clearTimeout(arrowTimer);
-        clearInterval(reactionTimer);
+    function renderCurrent() {
+        currentFastestEl.textContent = RL.fmtMs(RL.min(times));
+        currentAvgEl.textContent = RL.fmtMs(RL.avg(times));
+        currentCorrectEl.textContent = String(times.length);
+        progress.textContent = running ? ('已正确 ' + times.length + ' 次') : '';
+    }
+
+    function renderBest() {
+        bestFastestEl.textContent = RL.fmtMs(best.fastest);
+        bestAvgEl.textContent = RL.fmtMs(best.avg);
+        bestCorrectEl.textContent = String(best.correct || 0);
+    }
+
+    function saveBest() {
+        var f = RL.min(times), a = RL.avg(times);
+        if (f === null) return;
+        best.fastest = RL.betterLower(best.fastest, f);
+        best.avg = RL.betterLower(best.avg, a);
+        best.correct = RL.betterHigher(best.correct, times.length);
+        RL.store.set('arrow.fastest', Math.round(best.fastest));
+        RL.store.set('arrow.avg', Math.round(best.avg));
+        RL.store.set('arrow.correct', best.correct);
+        renderBest();
+    }
+
+    /* ---------- 流程 ---------- */
+    function clearTimers() {
+        clearTimeout(nextTimer);
         clearTimeout(timeoutTimer);
-        arrow.className = 'arrow';
-        timer.classList.remove('visible');
-        timer.textContent = '';
-        flowTip.textContent = '点击屏幕或按空格键开始测试';
-        flowTip.className = 'flow-tip text-gray';
-        updateCurrentStats();
-    }
-
-    function updateCurrentStats() {
-        const fastest = reactionTimes.length > 0 ? Math.min(...reactionTimes) : '--';
-        const avg = reactionTimes.length > 0 ? Math.round(reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length) : '--';
-        const correct = reactionTimes.length;
-        currentFastestEl.textContent = fastest === '--' ? '-- ms' : `${fastest} ms`;
-        currentAvgEl.textContent = avg === '--' ? '-- ms' : `${avg} ms`;
-        currentCorrectEl.textContent = correct;
-    }
-
-    function updateBestStats() {
-        bestFastestEl.textContent = bestScores.fastest === '--' ? '-- ms' : `${bestScores.fastest} ms`;
-        bestAvgEl.textContent = bestScores.avg === '--' ? '-- ms' : `${bestScores.avg} ms`;
-        bestCorrectEl.textContent = bestScores.correct;
-    }
-
-    function checkAndUpdateBestScores() {
-        if (reactionTimes.length === 0) return;
-        const currentFastest = Math.min(...reactionTimes);
-        const currentAvg = Math.round(reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length);
-        const currentCorrect = reactionTimes.length;
-
-        if (bestScores.fastest === '--' || currentFastest < bestScores.fastest) {
-            bestScores.fastest = currentFastest;
-            localStorage.setItem('bestFastest', currentFastest);
-        }
-        if (bestScores.avg === '--' || currentAvg < bestScores.avg) {
-            bestScores.avg = currentAvg;
-            localStorage.setItem('bestAvg', currentAvg);
-        }
-        if (currentCorrect > bestScores.correct) {
-            bestScores.correct = currentCorrect;
-            localStorage.setItem('bestCorrect', currentCorrect);
-        }
-        updateBestStats();
-    }
-
-    function handleTimeout() {
-        if (testEnded || !testActive) return;
-        clearInterval(reactionTimer);
-        clearTimeout(timeoutTimer);
-        timer.classList.remove('visible');
-        testEnded = true;
-        flowTip.textContent = `超时！600ms内未操作，测试结束 | 正确次数: ${reactionTimes.length}`;
-        flowTip.className = 'flow-tip text-red';
-        updateCurrentStats();
-        arrow.className = 'arrow';
-        startTime = 0;
-        startCooldown();
+        clearTimeout(msgTimer);
     }
 
     function showArrow() {
-        if (testEnded) return;
-        currentDirection = getRandomDirection();
-        arrow.className = `arrow ${currentDirection} visible`;
-        const symbols = { up:'⇧', down:'⇩', left:'⇦', right:'⇨' };
-        arrow.textContent = symbols[currentDirection];
-        startTime = performance.now();
-        flowTip.textContent = '按对应方向键/WASD';
-        flowTip.className = 'flow-tip text-yellow';
-        timer.classList.add('visible');
-        timer.textContent = '0 ms';
-        clearInterval(reactionTimer);
-        reactionTimer = setInterval(updateReactionTimer, 10);
-        clearTimeout(timeoutTimer);
-        timeoutTimer = setTimeout(handleTimeout, TIMEOUT_DURATION);
+        if (!running) return;
+        armed = false;
+        playing = true;
+        direction = RL.pick(DIRECTIONS);
+        renderArrow(direction);
+        flowTip('按对应方向键', 'yellow');
+
+        /* 关键：起点取「箭头已上屏」那一帧的时间戳 */
+        RL.afterPaint(function (ts) {
+            if (!running || !playing || armed) return;
+            armed = true;
+            sw.mark(ts || performance.now());
+            clearTimeout(timeoutTimer);
+            timeoutTimer = setTimeout(function () { endGame('超时！' + TIMEOUT + ' ms 内未操作'); }, TIMEOUT);
+        });
     }
 
-    function updateReactionTimer() {
-        if (startTime === 0 || testEnded) return;
-        timer.textContent = `${Math.round(performance.now() - startTime)} ms`;
-    }
-
-    function startCooldown() {
-        isCooldown = true;
-        setTimeout(() => {
-            isCooldown = false;
-            if (!testEnded) {
-                arrowTimer = setTimeout(showArrow, Math.random() * (MAX_DELAY - MIN_DELAY) + MIN_DELAY);
-            } else {
-                checkAndUpdateBestScores();
-                flowTip.textContent = `${flowTip.textContent} | 按空格键或点击屏幕重新开始`;
-                arrow.className = 'arrow';
-            }
-        }, 500);
+    function scheduleNext() {
+        clearTimeout(nextTimer);
+        nextTimer = setTimeout(showArrow, RL.rand(MIN_DELAY, MAX_DELAY));
     }
 
     function startTest() {
-        fullReset();
-        testActive = true;
-        flowTip.textContent = '准备开始...';
-        flowTip.className = 'flow-tip text-yellow';
-        arrowTimer = setTimeout(showArrow, 500);
+        clearTimers();
+        renderArrow('');
+        sw.reset();
+        times = [];
+        running = true;
+        playing = false;
+        armed = false;
+        direction = '';
+        renderCurrent();
+        flowTip('准备开始…', 'yellow');
+        nextTimer = setTimeout(showArrow, 500);
     }
 
-    function handleInputValidation(inputValue) {
-        if (!testActive || isCooldown || startTime === 0 || testEnded) return;
+    function endGame(reason) {
+        running = false;
+        playing = false;
+        armed = false;
+        clearTimers();
+        sw.reset();
+        renderArrow('');
+        renderCurrent();
+        saveBest();
+        progress.textContent = '';
+        flowTip(reason + ' · 正确 ' + times.length + ' 次 · 按空格或点击屏幕重来', 'red');
+    }
+
+    /* ---------- 作答 ---------- */
+    function answer(input) {
+        if (!running || !playing || !armed || !direction) return;
+        armed = false;
+        var cost = sw.stop();
         clearTimeout(timeoutTimer);
-        clearInterval(reactionTimer);
-        timer.classList.remove('visible');
-        const reactionTime = Math.round(performance.now() - startTime);
-        const isCorrect = KEY_MAPPING[currentDirection].includes(inputValue);
+        renderArrow('');
+        playing = false;
 
-        if (isCorrect) {
-            reactionTimes.push(reactionTime);
-            flowTip.textContent = `反应时间: ${reactionTime} ms`;
-            flowTip.className = 'flow-tip text-green';
-            updateCurrentStats();
-            arrow.className = 'arrow';
-            startTime = 0;
-            startCooldown();
+        if (input === direction) {
+            times.push(cost);
+            renderCurrent();
+            flowTip('正确！' + cost + ' ms', 'green');
+            scheduleNext();
         } else {
-            testEnded = true;
-            flowTip.textContent = `输入错误！测试结束 | 最后反应时间: ${reactionTime} ms`;
-            flowTip.className = 'flow-tip text-red';
-            updateCurrentStats();
-            arrow.className = 'arrow';
-            startTime = 0;
-            startCooldown();
+            flowTip('方向错误！测试结束 · 最后用时 ' + cost + ' ms', 'red');
+            saveBest();
+            running = false;
+            clearTimeout(msgTimer);
+            msgTimer = setTimeout(function () {
+                if (running) return;      // 期间已经开始新一轮，别覆盖新提示
+                flowTip('方向错误，测试结束 · 正确 ' + times.length + ' 次 · 按空格或点击屏幕重来', 'red');
+            }, 900);
         }
     }
 
-    function handleKeydown(e) {
-        if (e.code === 'Space') {
-            e.preventDefault();
-            if (!testActive || testEnded) startTest();
-            return;
-        }
-        for (const [direction, keys] of Object.entries(KEY_MAPPING)) {
-            if (keys.includes(e.code)) {
-                e.preventDefault();
-                handleInputValidation(e.code);
-                return;
-            }
-        }
-    }
+    /* ---------- 失焦保护 ---------- */
+    RL.onFocusLost(function () {
+        if (!running) return;
+        endGame('检测到切换窗口 · 本次作废');
+    });
 
-    function handleInteraction(e) {
+    RL.onActivate(function () {
+        if (playing) return;          // 箭头在场时，点击屏幕不当作开始
+        if (running) return;
+        startTest();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        var dir = KEY_MAP[e.code];
+        if (!dir) return;
         e.preventDefault();
-        if (isCooldown) return;
-        if (!testActive || testEnded) {
-            if (e.type === 'touchstart') {
-                setTimeout(startTest, TOUCH_DELAY);
-            } else {
-                startTest();
-            }
-        }
-    }
+        answer(dir);
+    });
 
-    document.addEventListener('keydown', handleKeydown);
-    document.addEventListener('click', handleInteraction);
-    document.addEventListener('touchstart', handleInteraction, { passive: false });
-    document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    /* 移动端：滑动作答 */
+    document.addEventListener('touchstart', function (e) {
+        var t = e.touches[0];
+        touchOrigin = { x: t.clientX, y: t.clientY };
+    }, { passive: true });
 
-    updateCurrentStats();
-    updateBestStats();
+    document.addEventListener('touchend', function (e) {
+        if (!touchOrigin) return;
+        var t = e.changedTouches[0];
+        var dx = t.clientX - touchOrigin.x;
+        var dy = t.clientY - touchOrigin.y;
+        touchOrigin = null;
+        if (Math.max(Math.abs(dx), Math.abs(dy)) < SWIPE_THRESHOLD) return;   // 轻点视为开始
+        answer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+    }, { passive: true });
+
+    renderCurrent();
+    renderBest();
 })();

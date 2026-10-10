@@ -1,334 +1,290 @@
-/* calcul.js — 运算反应测试 */
+/* ============================================================
+   calcul.js — 运算反应测试（算题 + 反应双线程）
+   ============================================================ */
 (function () {
-    const gameContainer = document.getElementById('gameContainer');
-    const flowTip = document.getElementById('flowTip');
-    const progress = document.getElementById('progress');
-    const equation = document.getElementById('equation');
-    const reactionCircle = document.getElementById('reactionCircle');
-    const reactionIndicator = document.getElementById('reactionIndicator');
-    const scoreDisplay = document.getElementById('scoreDisplay');
-    const calcTimer = document.getElementById('calcTimer');
-    const reactTimer = document.getElementById('reactTimer');
-    const inputFeedback = document.getElementById('inputFeedback');
+    'use strict';
 
-    const currentCalcScoreEl = document.getElementById('currentCalcScore');
-    const currentReactAvgEl = document.getElementById('currentReactAvg');
-    const bestCalcScoreEl = document.getElementById('bestCalcScore');
-    const bestReactAvgEl = document.getElementById('bestReactAvg');
+    var circle   = RL.$('reactionCircle');
+    var eqEl     = RL.$('equation');
+    var indicator= RL.$('reactionIndicator');
+    var scoreEl  = RL.$('scoreDisplay');
+    var feedback = RL.$('inputFeedback');
+    var flowTip  = RL.Tip(RL.$('flowTip'));
+    var progress = RL.$('progress');
 
-    const OPERATORS = ['+', '×'];
-    const TOTAL_REACTIONS = 5;
-    const MIN_REACT_DELAY = 2000;
-    const MAX_REACT_DELAY = 5000;
-    const MIN_CALC_QUESTIONS = 5;
+    var currentCalcEl  = RL.$('currentCalcScore');
+    var currentReactEl = RL.$('currentReactAvg');
+    var bestCalcEl     = RL.$('bestCalcScore');
+    var bestReactEl    = RL.$('bestReactAvg');
 
-    let gameActive = false;
-    let isReactPhase = false;
-    let reactCount = 0;
-    let currentReactionDelay = 0;
+    var calcSw = RL.Stopwatch(RL.$('calcTimer'), '计算 ');
+    var reactSw = RL.Stopwatch(RL.$('reactTimer'), '反应 ');
 
-    let calcStartTime = 0;
-    let reactStartTime = 0;
-    let calcTimes = [];
-    let reactTimes = [];
-    let calcCorrect = 0;
-    let calcTotal = 0;
+    var OPERATORS = ['+', '×'];
+    var TOTAL_REACTIONS = 5;
+    var MIN_REACT_DELAY = 2000;
+    var MAX_REACT_DELAY = 5000;
+    var MIN_CALC_QUESTIONS = 5;
+    var NEXT_QUESTION_DELAY = 260;
 
-    let currentEquation = '';
-    let correctDigit = 0;
-    let inputBuffer = '';
+    var playing = false;
+    var reactPhase = false;
+    var reactArmed = false;   // 绿色已上屏，可以按成绩计时
+    var questionArmed = false; // 题目已上屏且尚未作答（防止重复计入同一题）
+    var reactCount = 0;
+    var nextReactTimer = null;
+    var questionTimer = null;
 
-    let calcTimerInterval = null;
-    let reactTimerInterval = null;
-    let reactTimeout = null;
-    let nextReactTimeout = null;
+    var calcTimes = [];
+    var reactTimes = [];
+    var calcCorrect = 0;
+    var calcTotal = 0;
+    var currentDigit = 0;
 
-    let bestScores = {
-        calcSpeed: localStorage.getItem('dualCalcSpeed') || '--',
-        calcAcc: localStorage.getItem('dualCalcAcc') || '--',
-        calcScore: localStorage.getItem('dualCalcScore') || 0,
-        reactAvg: localStorage.getItem('dualReactAvg') || '--',
+    var best = {
+        score: Number(RL.store.get('calcul.score', 'dualCalcScore') || 0),
+        speed: RL.store.get('calcul.speed', 'dualCalcSpeed'),
+        acc: RL.store.get('calcul.accuracy', 'dualCalcAcc'),
+        count: RL.store.get('calcul.count', 'dualCalcCount') || '--',
+        reactAvg: RL.store.get('calcul.reactAvg', 'dualReactAvg')
     };
 
+    /* ---------- 出题 ---------- */
     function generateEquation() {
-        const operator = OPERATORS[Math.floor(Math.random() * OPERATORS.length)];
-        let a, b, result;
-        do {
-            if (operator === '+') {
-                a = Math.floor(Math.random() * 89) + 10;
-                b = Math.floor(Math.random() * 89) + 10;
-                result = a + b;
-            } else {
-                a = Math.floor(Math.random() * 9) + 1;
-                b = Math.floor(Math.random() * 9) + 1;
-                result = a * b;
-            }
-        } while (result < 0 || result >= 100 || !Number.isInteger(result));
-
-        const resultStr = result.toString();
-        const missingIndex = resultStr.length - 1;
-        correctDigit = parseInt(resultStr[missingIndex]);
-        const displayResult = resultStr.substring(0, missingIndex) + '□';
-        return `${a} ${operator} ${b} = ${displayResult}`;
-    }
-
-    function calculateCalcScore() {
-        if (calcTimes.length < MIN_CALC_QUESTIONS) return 0;
-        const totalTime = calcTimes.reduce((a, b) => a + b, 0);
-        const avgTime = totalTime / calcTimes.length;
-        if (avgTime === 0) return 0;
-        const accuracy = calcCorrect / calcTotal;
-        return Math.round(accuracy * calcTimes.length * 1000000 / avgTime);
-    }
-
-    function getCalcStats() {
-        if (calcTimes.length === 0) return { avgTime: '--', accuracy: '--' };
-        const totalTime = calcTimes.reduce((a, b) => a + b, 0);
-        const avgTime = Math.round(totalTime / calcTimes.length);
-        const accuracy = Math.round((calcCorrect / calcTotal) * 100);
-        return { avgTime, accuracy };
-    }
-
-    function startCalcTimer() {
-        calcStartTime = performance.now();
-        calcTimer.classList.add('visible');
-        clearInterval(calcTimerInterval);
-        calcTimerInterval = setInterval(() => {
-            calcTimer.textContent = `计算: ${Math.round(performance.now() - calcStartTime)} ms`;
-        }, 10);
-    }
-
-    function stopCalcTimer() {
-        clearInterval(calcTimerInterval);
-        calcTimer.classList.remove('visible');
-        return Math.round(performance.now() - calcStartTime);
-    }
-
-    function startReactTimer() {
-        reactStartTime = performance.now();
-        reactTimer.classList.add('visible');
-        reactTimerInterval = setInterval(() => {
-            reactTimer.textContent = `反应: ${Math.round(performance.now() - reactStartTime)} ms`;
-        }, 10);
-    }
-
-    function stopReactTimer() {
-        clearInterval(reactTimerInterval);
-        reactTimer.classList.remove('visible');
-        return Math.round(performance.now() - reactStartTime);
-    }
-
-    function showEquation() {
-        if (!gameActive) return;
-        currentEquation = generateEquation();
-        equation.textContent = currentEquation;
-        inputBuffer = '';
-        calcTotal++;
-        startCalcTimer();
-        flowTip.textContent = '输入结果的个位数字';
-        flowTip.className = 'flow-tip text-blue';
-        updateProgress();
-    }
-
-    function updateProgress() {
-        progress.textContent = `计算: ${calcTotal} 题 | 反应: ${reactCount}/${TOTAL_REACTIONS} 次`;
-    }
-
-    function handleDigitInput(digit) {
-        if (!gameActive || !calcStartTime) return;
-        const calcTime = stopCalcTimer();
-        calcStartTime = 0;
-        calcTimes.push(calcTime);
-
-        if (parseInt(digit) === correctDigit) {
-            calcCorrect++;
-            showFeedback('✓ 正确', 'text-green');
+        var op = RL.pick(OPERATORS);
+        var a, b, result;
+        if (op === '+') {
+            a = RL.randInt(10, 89);
+            b = RL.randInt(10, 89);
+            result = a + b;
         } else {
-            showFeedback('✗ 错误', 'text-red');
+            a = RL.randInt(2, 12);
+            b = RL.randInt(2, 9);
+            result = a * b;
         }
-
-        updateCalcScore();
-        setTimeout(() => showEquation(), 300);
+        /* 保证结果为两位数，隐藏个位 */
+        while (result < 10 || result > 99) {
+            if (op === '+') { b = RL.randInt(10, 89); result = a + b; }
+            else { b = RL.randInt(2, 9); result = a * b; }
+        }
+        var s = String(result);
+        currentDigit = Number(s[s.length - 1]);
+        return { text: a + ' ' + op + ' ' + b + ' = ' + s[0] + '<span class="eq-box">□</span>', digit: currentDigit };
     }
 
-    function showFeedback(text, colorClass) {
-        inputFeedback.textContent = text;
-        inputFeedback.className = `input-feedback ${colorClass}`;
-        inputFeedback.classList.add('visible');
-        setTimeout(() => inputFeedback.classList.remove('visible'), 800);
+    /* ---------- 渲染 ---------- */
+    function renderScore() {
+        scoreEl.textContent = '当前计算分数：' + calcScore();
+        renderCurrent();
+    }
+
+    function renderCurrent() {
+        var avgTime = RL.avg(calcTimes);
+        var acc = calcTotal ? (calcCorrect / calcTotal) * 100 : null;
+        currentCalcEl.textContent =
+            (avgTime === null ? '--' : Math.round(avgTime) + 'ms') + ' / ' +
+            (acc === null ? '--' : Math.round(acc) + '%') + ' / ' + calcTotal;
+        currentReactEl.textContent = RL.fmtMs(RL.avg(reactTimes));
+    }
+
+    function renderBest() {
+        bestCalcEl.textContent =
+            (best.speed === null ? '--' : Math.round(best.speed) + 'ms') + ' / ' +
+            (best.acc === null ? '--' : Math.round(best.acc) + '%') + ' / ' + best.count;
+        bestReactEl.textContent = RL.fmtMs(best.reactAvg);
+    }
+
+    function renderProgress() {
+        progress.textContent = '计算 ' + calcTotal + ' 题 · 反应 ' + reactCount + ' / ' + TOTAL_REACTIONS + ' 次';
+    }
+
+    var fbTimer = null;
+    function flash(text, tone) {
+        /* 反馈文字瞬时显示、定时清空，不使用缩放 / 淡出动画 */
+        feedback.textContent = text;
+        feedback.className = 'feedback text-' + tone;
+        clearTimeout(fbTimer);
+        fbTimer = setTimeout(function () { feedback.textContent = ''; }, 800);
+    }
+
+    function calcScore() {
+        if (calcTimes.length < MIN_CALC_QUESTIONS) return 0;
+        var a = RL.avg(calcTimes);
+        if (!a) return 0;
+        return Math.round((calcCorrect / calcTotal) * calcTimes.length * 1000000 / a);
+    }
+
+    /* ---------- 流程 ---------- */
+    function clearTimers() {
+        clearTimeout(nextReactTimer);
+        clearTimeout(questionTimer);
+    }
+
+    function showQuestion() {
+        if (!playing) return;
+        var q = generateEquation();
+        eqEl.innerHTML = q.text;
+        calcTotal++;
+        questionArmed = false;
+        renderProgress();
+        /* 答题计时以「题目已上屏」那一帧为起点；上屏前不接受作答 */
+        RL.afterPaint(function (ts) {
+            if (!playing) return;
+            questionArmed = true;
+            calcSw.mark(ts || performance.now());
+        });
     }
 
     function startReactPhase() {
-        if (!gameActive || isReactPhase || reactCount >= TOTAL_REACTIONS) return;
-        isReactPhase = true;
-        reactionCircle.classList.add('go');
-        reactionIndicator.textContent = '立即点击！';
-        startReactTimer();
-    }
-
-    function handleReaction() {
-        if (!gameActive || !isReactPhase) return;
-        const reactTime = stopReactTimer();
-        reactTimes.push(reactTime);
-        reactCount++;
-        isReactPhase = false;
-        reactionCircle.classList.remove('go');
-        reactionIndicator.textContent = '继续计算...';
-        flowTip.textContent = `第${reactCount}次反应: ${reactTime} ms`;
-        flowTip.className = 'flow-tip text-green';
-        updateProgress();
-        updateReactStats();
-
-        if (reactCount >= TOTAL_REACTIONS) { endGame(); return; }
-        scheduleNextReact();
+        if (!playing || reactPhase || reactCount >= TOTAL_REACTIONS) return;
+        reactPhase = true;
+        reactArmed = false;
+        circle.classList.add('go');
+        indicator.textContent = '立即点击！';
+        /* 关键：起点取「绿色已上屏」那一帧的时间戳 */
+        RL.afterPaint(function (ts) {
+            if (!playing || !reactPhase) return;
+            reactArmed = true;
+            reactSw.mark(ts || performance.now());
+        });
     }
 
     function scheduleNextReact() {
-        if (reactCount >= TOTAL_REACTIONS || !gameActive) return;
-        const delay = Math.random() * (MAX_REACT_DELAY - MIN_REACT_DELAY) + MIN_REACT_DELAY;
-        currentReactionDelay = delay;
-        reactionIndicator.textContent = `准备中...`;
-        flowTip.textContent = ``;
-        flowTip.className = 'flow-tip text-blue';
-        nextReactTimeout = setTimeout(() => {
-            if (gameActive) startReactPhase();
-        }, delay);
+        if (!playing || reactCount >= TOTAL_REACTIONS) return;
+        clearTimeout(nextReactTimer);
+        nextReactTimer = setTimeout(startReactPhase, RL.rand(MIN_REACT_DELAY, MAX_REACT_DELAY));
     }
 
     function startGame() {
-        gameActive = true;
-        isReactPhase = false;
+        clearTimers();
+        calcSw.reset();
+        reactSw.reset();
+        playing = true;
+        reactPhase = false;
+        reactArmed = false;
+        questionArmed = false;
         reactCount = 0;
         calcTimes = [];
         reactTimes = [];
         calcCorrect = 0;
         calcTotal = 0;
-        clearTimeout(reactTimeout);
-        clearTimeout(nextReactTimeout);
-        clearInterval(calcTimerInterval);
-        clearInterval(reactTimerInterval);
-        calcTimer.classList.remove('visible');
-        reactTimer.classList.remove('visible');
-        reactionCircle.classList.remove('go');
-        equation.textContent = '准备开始...';
-        reactionIndicator.textContent = '注意圆形变绿！';
-        scoreDisplay.textContent = '当前计算分数: 0';
-        flowTip.textContent = '测试开始！计算等式并注意圆形变色';
-        flowTip.className = 'flow-tip text-blue';
-        updateCurrentStats();
-        updateProgress();
-        setTimeout(() => { showEquation(); scheduleNextReact(); }, 1000);
+        circle.classList.remove('go');
+        eqEl.textContent = '准备开始…';
+        indicator.textContent = '注意圆形变绿！';
+        flowTip('测试开始！一边算题一边盯着圆形', 'blue');
+        renderScore();
+        renderProgress();
+        questionTimer = setTimeout(function () { showQuestion(); scheduleNextReact(); }, 900);
     }
 
     function endGame() {
-        gameActive = false;
-        isReactPhase = false;
-        clearInterval(calcTimerInterval);
-        calcTimer.classList.remove('visible');
-        calcTimer.textContent = '计算: -- ms';
-        clearInterval(reactTimerInterval);
-        reactTimer.classList.remove('visible');
-        reactTimer.textContent = '反应: -- ms';
-        updateCurrentStats();
-        checkAndUpdateBestScores();
-        flowTip.textContent = `测试完成！最终分数: ${calculateCalcScore()}`;
-        flowTip.className = 'flow-tip text-yellow';
-        reactionCircle.classList.remove('go');
-        equation.textContent = '测试完成';
-        reactionIndicator.textContent = '点击重新开始';
-        clearTimeout(nextReactTimeout);
-    }
+        playing = false;
+        reactPhase = false;
+        reactArmed = false;
+        questionArmed = false;
+        clearTimers();
+        calcSw.reset();
+        reactSw.reset();
+        circle.classList.remove('go');
+        eqEl.textContent = '测试完成';
+        indicator.textContent = '点击重新开始';
 
-    function updateCalcScore() {
-        scoreDisplay.textContent = `当前计算分数: ${calculateCalcScore()}`;
-        updateCurrentStats();
-    }
+        renderCurrent();
+        var score = calcScore();
+        var avgTime = RL.avg(calcTimes);
+        var acc = calcTotal ? (calcCorrect / calcTotal) * 100 : null;
 
-    function updateCurrentStats() {
-        const { avgTime, accuracy } = getCalcStats();
-        const reactAvg = reactTimes.length > 0
-            ? Math.round(reactTimes.reduce((a, b) => a + b, 0) / reactTimes.length)
-            : '--';
-        currentCalcScoreEl.textContent = `${avgTime === '--' ? '--' : avgTime + 'ms'} / ${accuracy === '--' ? '--' : accuracy}% / ${calcTotal}`;
-        currentReactAvgEl.textContent = reactAvg === '--' ? '-- ms' : `${reactAvg} ms`;
-    }
-
-    function updateReactStats() {
-        if (reactTimes.length > 0) {
-            const avg = Math.round(reactTimes.reduce((a, b) => a + b, 0) / reactTimes.length);
-            currentReactAvgEl.textContent = `${avg} ms`;
+        if (score > Number(best.score || 0)) {
+            best.score = score;
+            best.speed = avgTime;
+            best.acc = acc;
+            best.count = calcTotal;
+            RL.store.set('calcul.score', score);
+            RL.store.set('calcul.speed', Math.round(avgTime));
+            RL.store.set('calcul.accuracy', Math.round(acc));
+            RL.store.set('calcul.count', calcTotal);
         }
-    }
-
-    function updateBestStats() {
-        const calcCount = localStorage.getItem('dualCalcCount') || '--';
-        bestCalcScoreEl.textContent = `${bestScores.calcSpeed === '--' ? '--' : bestScores.calcSpeed + 'ms'} / ${bestScores.calcAcc === '--' ? '--' : bestScores.calcAcc}% / ${calcCount}`;
-        bestReactAvgEl.textContent = bestScores.reactAvg === '--' ? '-- ms' : `${bestScores.reactAvg} ms`;
-    }
-
-    function checkAndUpdateBestScores() {
-        if (calcTimes.length === 0 || reactTimes.length === 0) return;
-        const { avgTime, accuracy } = getCalcStats();
-        const reactAvg = Math.round(reactTimes.reduce((a, b) => a + b, 0) / reactTimes.length);
-        const calcScore = calculateCalcScore();
-
-        if (calcScore > bestScores.calcScore) {
-            bestScores.calcScore = calcScore;
-            bestScores.calcSpeed = avgTime;
-            bestScores.calcAcc = accuracy;
-            localStorage.setItem('dualCalcScore', calcScore);
-            localStorage.setItem('dualCalcSpeed', avgTime);
-            localStorage.setItem('dualCalcAcc', accuracy);
-            localStorage.setItem('dualCalcCount', calcTotal);
+        var ra = RL.avg(reactTimes);
+        if (ra !== null) {
+            best.reactAvg = RL.betterLower(best.reactAvg, ra);
+            RL.store.set('calcul.reactAvg', Math.round(best.reactAvg));
         }
-        if (bestScores.reactAvg === '--' || reactAvg < bestScores.reactAvg) {
-            bestScores.reactAvg = reactAvg;
-            localStorage.setItem('dualReactAvg', reactAvg);
+        renderBest();
+
+        flowTip('测试完成！计算分数 ' + score + ' · 平均反应 ' + Math.round(ra || 0) + ' ms · 按空格或点击重来', 'yellow');
+    }
+
+    /* ---------- 作答 ---------- */
+    function submitDigit(digit) {
+        /* 一题只能作答一次：questionArmed 在题目上屏时置位，作答瞬间清除。
+           这样既能避免把 null 计时计入成绩，也避免在出下一题的间隔里
+           重复提交同一题（准确率曾因此超过 100%）。 */
+        if (!playing || !calcTotal || !questionArmed) return;
+        questionArmed = false;
+
+        var cost = calcSw.stop();
+        calcTimes.push(cost);
+        if (Number(digit) === currentDigit) {
+            calcCorrect++;
+            flash('✓ 正确', 'green');
+        } else {
+            flash('✗ 错误', 'red');
         }
-        updateBestStats();
+        renderScore();
+        clearTimeout(questionTimer);
+        questionTimer = setTimeout(showQuestion, NEXT_QUESTION_DELAY);
     }
 
-    function handleKeydown(e) {
-        if (e.code === 'Space') {
-            e.preventDefault();
-            if (!gameActive) { startGame(); return; }
-            if (isReactPhase) handleReaction();
-        }
-        if (e.code.startsWith('Digit') || e.code.startsWith('Numpad')) {
-            e.preventDefault();
-            const digit = e.code.replace('Digit', '').replace('Numpad', '');
-            if (digit >= '0' && digit <= '9') handleDigitInput(digit);
-        }
+    function submitReaction() {
+        if (!playing || !reactPhase || !reactArmed) return;
+        reactArmed = false;
+        var cost = reactSw.stop();
+        reactTimes.push(cost);
+        reactCount++;
+        reactPhase = false;
+        circle.classList.remove('go');
+        indicator.textContent = '继续计算…';
+        flowTip('第 ' + reactCount + ' 次反应：' + cost + ' ms', 'green');
+        renderScore();
+        renderProgress();
+        if (reactCount >= TOTAL_REACTIONS) { endGame(); return; }
+        scheduleNextReact();
     }
 
-    function handleCircleClick(e) {
-        e.stopPropagation();
-        if (!gameActive) { startGame(); return; }
-        if (isReactPhase) handleReaction();
-    }
-
-    function handleInteraction(e) {
-        e.preventDefault();
-        if (!gameActive) startGame();
-    }
-
-    document.addEventListener('keydown', handleKeydown);
-    document.addEventListener('click', handleInteraction);
-    document.addEventListener('touchstart', handleInteraction, { passive: false });
-
-    reactionCircle.addEventListener('click', handleCircleClick);
-    reactionCircle.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        handleCircleClick(e);
-    }, { passive: false });
-
-    document.querySelectorAll('.key').forEach(key => {
-        key.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const keyVal = key.dataset.key;
-            if (keyVal >= '0' && keyVal <= '9') handleDigitInput(keyVal);
-        });
+    /* ---------- 失焦保护 ---------- */
+    RL.onFocusLost(function () {
+        if (!playing) return;
+        endGame();
+        flowTip('检测到切换窗口 · 本次作废 · 按空格或点击屏幕重新开始', 'red');
     });
 
-    updateBestStats();
+    /* ---------- 交互 ---------- */
+    RL.onActivate(function () {
+        if (!playing) { startGame(); return; }
+        if (reactPhase) submitReaction();
+    });
+
+    document.addEventListener('keydown', function (e) {
+        var m = /^(?:Digit|Numpad)([0-9])$/.exec(e.code);
+        if (!m) return;
+        e.preventDefault();
+        submitDigit(m[1]);
+    });
+
+    var keys = document.querySelectorAll('.key');
+    for (var i = 0; i < keys.length; i++) {
+        keys[i].addEventListener('click', function (e) {
+            e.stopPropagation();
+            submitDigit(this.dataset.key);
+        });
+        keys[i].addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            submitDigit(this.dataset.key);
+        }, { passive: false });
+    }
+
+    renderCurrent();
+    renderBest();
+    renderScore();
 })();

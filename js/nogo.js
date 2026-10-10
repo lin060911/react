@@ -1,195 +1,250 @@
-/* nogo.js — Go/No-Go 抑制反应测试 */
+/* ============================================================
+   nogo.js — Go / No-Go 抑制反应测试
+   绿色 GO 立即点击 / 红色 NO-GO 必须忍住
+   计时规则：以「刺激真正绘制到屏幕」的那一帧为起点。
+   ============================================================ */
 (function () {
-    const circle = document.getElementById('circle');
-    const flowTip = document.getElementById('flowTip');
-    const progress = document.getElementById('progress');
+    'use strict';
 
-    const TOTAL_TRIALS = 10;
-    const GO_PROBABILITY = 0.7;
-    const MIN_STIMULUS_DURATION = 800;
-    const MAX_STIMULUS_DURATION = 1000;
-    const MIN_INTERVAL_DURATION = 800;
-    const MAX_INTERVAL_DURATION = 1600;
+    var circle   = RL.$('circle');
+    var flowTip  = RL.Tip(RL.$('flowTip'));
+    var progress = RL.$('progress');
+    var timerEl  = RL.$('timer');
 
-    let state = 'idle';
-    let trial = 0;
-    let isTestLocked = false;
-    let stimulusHandled = false;
+    var goRateEl    = RL.$('goRate');
+    var noGoRateEl  = RL.$('noGoRate');
+    var avgRTEl     = RL.$('avgRT');
+    var bestNoGoEl  = RL.$('bestNoGoRate');
+    var bestAvgRTEl = RL.$('bestAvgRT');
 
-    let goCount = 0, goCorrect = 0;
-    let noGoCount = 0, noGoCorrect = 0;
-    let goTimes = [];
+    var TOTAL_TRIALS = 10;
+    var GO_PROBABILITY = 0.7;
+    var MIN_STIMULUS = 800;
+    var MAX_STIMULUS = 1000;
+    var MIN_INTERVAL = 700;
+    var MAX_INTERVAL = 1500;
+    var RESET_DELAY = 2000;
 
-    let stimulusStartTime = 0;
-    let timer = null;
+    var STATE = { IDLE: 'idle', INTERVAL: 'interval', STIMULUS: 'stimulus', DONE: 'done' };
 
-    let bestGoRate = 0;
-    let bestNoGoRate = 0;
-    let bestAvgRT = Infinity;
+    var sw = RL.Stopwatch(timerEl);
 
-    function loadBestFromStorage() {
-        try {
-            const defaultBest = { goRate: 0, noGoRate: 0, avgRT: Infinity };
-            const stored = JSON.parse(localStorage.getItem('gngBestScores')) || defaultBest;
-            bestGoRate = stored.goRate || 0;
-            bestNoGoRate = stored.noGoRate || 0;
-            bestAvgRT = stored.avgRT || Infinity;
-        } catch (e) {
-            bestGoRate = 0; bestNoGoRate = 0; bestAvgRT = Infinity;
+    var state = STATE.IDLE;
+    var trial = 0;
+    var stimulusStart = 0;    // 0 表示刺激尚未上屏，此时点击按提前反应处理
+    var isGo = false;
+    var handled = false;
+    var timer = null;
+
+    var goCount = 0, goCorrect = 0;
+    var noGoCount = 0, noGoCorrect = 0;
+    var goTimes = [];
+
+    /* ---------- 最佳成绩 ---------- */
+    var best = (function () {
+        var raw = RL.store.get('nogo.best', 'gngBestScores');
+        var d = { noGoRate: null, avgRT: null };
+        if (raw) {
+            try {
+                var p = JSON.parse(raw);
+                d.noGoRate = p.noGoRate || null;
+                d.avgRT = (p.avgRT && isFinite(p.avgRT)) ? p.avgRT : null;
+            } catch (e) { /* ignore */ }
+        }
+        return d;
+    })();
+
+    function renderBest() {
+        bestNoGoEl.textContent = RL.fmtPct(best.noGoRate);
+        bestAvgRTEl.textContent = RL.fmtMs(best.avgRT);
+    }
+
+    function saveBest() {
+        RL.store.set('nogo.best', JSON.stringify(best));
+    }
+
+    /* ---------- 渲染 ---------- */
+    function renderCircle(text, cls, sub) {
+        circle.className = 'stimulus-circle ' + cls;
+        circle.innerHTML = '';
+        var main = document.createElement('div');
+        main.textContent = text;
+        circle.appendChild(main);
+        if (sub) {
+            var s = document.createElement('div');
+            s.className = 'sub';
+            s.textContent = sub;
+            circle.appendChild(s);
         }
     }
 
-    function saveBestToStorage() {
-        try {
-            localStorage.setItem('gngBestScores', JSON.stringify({
-                goRate: bestGoRate, noGoRate: bestNoGoRate, avgRT: bestAvgRT
-            }));
-        } catch (e) {}
-    }
-
-    function updateBestDisplay() {
-        document.getElementById('bestNoGoRate').textContent = bestNoGoRate === 0 ? '-- %' : bestNoGoRate + '%';
-        document.getElementById('bestAvgRT').textContent = (bestAvgRT === Infinity || bestAvgRT === 0) ? '-- ms' : bestAvgRT + ' ms';
-    }
-
     function resetUI() {
-        circle.className = 'stimulus-circle circle-wait';
-        circle.textContent = '开始';
-        flowTip.textContent = '点击圆形或按空格键开始测试';
-        flowTip.className = 'flow-tip text-gray';
+        renderCircle('开始', 'circle-wait', '点击或按空格开始');
+        flowTip('点击圆形或按空格键开始测试', 'gray');
         progress.textContent = '';
+        goRateEl.textContent = '-- %';
+        noGoRateEl.textContent = '-- %';
+        avgRTEl.textContent = '-- ms';
     }
 
-    function resetState() {
-        state = 'idle';
+    /* ---------- 流程 ---------- */
+    function clearTimer() { clearTimeout(timer); timer = null; }
+
+    function resetCounters() {
         trial = 0;
-        isTestLocked = false;
-        stimulusHandled = false;
-        goCount = 0; goCorrect = 0;
-        noGoCount = 0; noGoCorrect = 0;
+        goCount = goCorrect = noGoCount = noGoCorrect = 0;
         goTimes = [];
-        if (timer) clearTimeout(timer);
-        timer = null;
-    }
-
-    function getRandomDuration(min, max) {
-        return Math.floor(Math.random() * (max - min + 1)) + min;
+        clearTimer();
     }
 
     function showInterval() {
         if (trial >= TOTAL_TRIALS) { endTest(); return; }
-        state = 'interval';
-        stimulusHandled = false;
-        circle.className = 'stimulus-circle circle-interval';
-        circle.textContent = `第 ${trial + 1}/${TOTAL_TRIALS} 次`;
-        flowTip.textContent = '准备';
-        flowTip.className = 'flow-tip text-gray';
-
-        timer = setTimeout(startTrial, getRandomDuration(MIN_INTERVAL_DURATION, MAX_INTERVAL_DURATION));
+        state = STATE.INTERVAL;
+        handled = false;
+        stimulusStart = 0;
+        sw.reset();
+        renderCircle('准备', 'circle-interval', '第 ' + (trial + 1) + ' / ' + TOTAL_TRIALS + ' 次');
+        flowTip('准备…等待信号出现', 'gray');
+        clearTimer();
+        timer = setTimeout(startTrial, RL.randInt(MIN_INTERVAL, MAX_INTERVAL));
     }
 
     function startTrial() {
         trial++;
-        progress.textContent = `第 ${trial}/${TOTAL_TRIALS} 次`;
-        const isGo = Math.random() < GO_PROBABILITY;
-        stimulusHandled = false;
+        progress.textContent = '第 ' + trial + ' / ' + TOTAL_TRIALS + ' 次';
+        isGo = Math.random() < GO_PROBABILITY;
+        handled = false;
+        stimulusStart = 0;
+        state = STATE.STIMULUS;
 
         if (isGo) {
             goCount++;
-            circle.className = 'stimulus-circle circle-go';
-            circle.textContent = 'GO！';
-            flowTip.textContent = '绿色：立即点击';
-            flowTip.className = 'flow-tip text-green';
+            renderCircle('GO！', 'circle-go', '立即点击');
+            flowTip('绿色：立即点击', 'green');
         } else {
             noGoCount++;
-            circle.className = 'stimulus-circle circle-nogo';
-            circle.textContent = 'NO-GO!';
-            flowTip.textContent = '红色：不要点击';
-            flowTip.className = 'flow-tip text-red';
+            renderCircle('NO-GO', 'circle-nogo', '不要点击');
+            flowTip('红色：不要点击', 'red');
         }
 
-        stimulusStartTime = performance.now();
-        state = 'stimulus';
+        /* 关键：起点取「刺激已上屏」那一帧的时间戳 */
+        RL.afterPaint(function (ts) {
+            if (state !== STATE.STIMULUS || handled) return;
+            stimulusStart = ts || performance.now();
+            sw.mark(stimulusStart);
+        });
 
-        timer = setTimeout(() => {
-            if (state !== 'stimulus') return;
-            if (!isGo && !stimulusHandled) noGoCorrect++;
-            stimulusHandled = true;
-            showInterval();
-        }, getRandomDuration(MIN_STIMULUS_DURATION, MAX_STIMULUS_DURATION));
+        clearTimer();
+        timer = setTimeout(function () {
+            if (state !== STATE.STIMULUS) return;
+            handled = true;
+            sw.reset();
+            if (!isGo) {
+                noGoCorrect++;                 // 忍住了 = 正确抑制
+                flowTip('正确抑制！', 'green');
+            } else {
+                flowTip('错过 GO 信号', 'orange');
+            }
+            next();
+        }, RL.randInt(MIN_STIMULUS, MAX_STIMULUS));
     }
 
-    function handleAction(e) {
-        e.preventDefault();
-        if (isTestLocked) return;
+    function next() {
+        if (trial >= TOTAL_TRIALS) { endTest(); return; }
+        showInterval();
+    }
 
-        if (state === 'idle') {
-            resetState();
-            resetUI();
-            showInterval();
-            return;
-        }
-
-        if (state === 'interval' || stimulusHandled) return;
-        stimulusHandled = true;
-        clearTimeout(timer);
-
-        if (circle.classList.contains('circle-go')) {
-            const rt = Math.round(performance.now() - stimulusStartTime);
-            goTimes.push(rt);
-            goCorrect++;
-            circle.textContent = `${rt} ms`;
-            flowTip.textContent = `${rt} ms`;
-        } else {
-            circle.textContent = '错误！';
-            flowTip.textContent = '红色不应点击';
-            flowTip.className = 'flow-tip text-red';
-        }
-
-        if (trial >= TOTAL_TRIALS) {
-            endTest();
-        } else {
-            setTimeout(showInterval, getRandomDuration(MIN_INTERVAL_DURATION, MAX_INTERVAL_DURATION));
-        }
+    function startTest() {
+        resetCounters();
+        renderCircle('准备', 'circle-interval', '测试开始');
+        flowTip('测试开始！绿色点击，红色忍住', 'yellow');
+        showInterval();
     }
 
     function endTest() {
-        isTestLocked = true;
-        state = 'idle';
+        clearTimer();
+        state = STATE.DONE;
+        sw.reset();
+        stimulusStart = 0;
 
-        const goRate = goCount ? Math.round((goCorrect / goCount) * 100) : 0;
-        const noGoRate = noGoCount ? Math.round((noGoCorrect / noGoCount) * 100) : 0;
-        const avgRT = goTimes.length ? Math.round(goTimes.reduce((a, b) => a + b, 0) / goTimes.length) : 0;
+        /* 没出现过的类型记 null（显示 -- %），不要用 0 去污染显示与最佳成绩 */
+        var goRate = goCount ? (goCorrect / goCount) * 100 : null;
+        var noGoRate = noGoCount ? (noGoCorrect / noGoCount) * 100 : null;
+        var a = RL.avg(goTimes);
 
-        document.getElementById('goRate').textContent = goRate + '%';
-        document.getElementById('noGoRate').textContent = noGoRate + '%';
-        document.getElementById('avgRT').textContent = avgRT === 0 ? '-- ms' : avgRT + ' ms';
+        goRateEl.textContent = RL.fmtPct(goRate);
+        noGoRateEl.textContent = RL.fmtPct(noGoRate);
+        avgRTEl.textContent = RL.fmtMs(a);
 
-        if (goRate > bestGoRate) bestGoRate = goRate;
-        if (noGoRate > bestNoGoRate) bestNoGoRate = noGoRate;
-        if (avgRT > 0 && avgRT < bestAvgRT) bestAvgRT = avgRT;
+        if (noGoRate !== null) best.noGoRate = RL.betterHigher(best.noGoRate, noGoRate);
+        if (a !== null) best.avgRT = RL.betterLower(best.avgRT, a);
+        saveBest();
+        renderBest();
 
-        saveBestToStorage();
-        updateBestDisplay();
+        renderCircle('完成', 'circle-wait', 'Go ' + goCorrect + '/' + goCount + ' · No-Go ' + noGoCorrect + '/' + noGoCount);
+        flowTip('测试结束 · 2 秒后可重新开始', 'yellow');
+        progress.textContent = '';
 
-        circle.className = 'stimulus-circle circle-wait';
-        circle.textContent = '完成';
-        flowTip.textContent = '测试结束,等待重置';
-        flowTip.className = 'flow-tip text-yellow';
-
-        setTimeout(() => {
-            isTestLocked = false;
-            resetUI();
-        }, 2000);
+        setTimeout(function () {
+            if (state === STATE.DONE) { state = STATE.IDLE; resetUI(); }
+        }, RESET_DELAY);
     }
 
-    circle.addEventListener('mousedown', handleAction);
-    circle.addEventListener('touchstart', handleAction, { passive: false });
-    document.addEventListener('keydown', e => {
-        if (e.code === 'Space') handleAction(e);
+    /* ---------- 失焦保护 ---------- */
+    RL.onFocusLost(function () {
+        if (state === STATE.IDLE || state === STATE.DONE) return;
+        clearTimer();
+        sw.reset();
+        state = STATE.IDLE;
+        resetCounters();
+        resetUI();
+        flowTip('检测到切换窗口 · 本次作废 · 点击或按空格重新开始', 'red');
     });
 
-    loadBestFromStorage();
+    /* ---------- 交互 ---------- */
+    RL.onActivate(function () {
+        if (state === STATE.DONE) return;
+
+        if (state === STATE.IDLE) { startTest(); return; }
+
+        if (state === STATE.INTERVAL) {
+            flowTip('等待信号出现，稍安勿躁', 'gray');
+            return;
+        }
+
+        if (state === STATE.STIMULUS && !handled) {
+            /* 刺激还没上屏就点击：属于提前反应，本次记为错误 */
+            if (!stimulusStart) {
+                handled = true;
+                clearTimer();
+                sw.reset();
+                renderCircle('过早反应', 'circle-nogo', '信号未出现');
+                flowTip('信号还没出现就点击，本次失败', 'red');
+                setTimeout(next, 600);
+                return;
+            }
+
+            handled = true;
+            clearTimer();
+
+            if (isGo) {
+                var rt = Math.round(performance.now() - stimulusStart);
+                sw.stop();
+                stimulusStart = 0;
+                goTimes.push(rt);
+                goCorrect++;
+                renderCircle(rt + ' ms', 'circle-go');
+                flowTip('反应时间：' + rt + ' ms', 'green');
+            } else {
+                sw.reset();
+                stimulusStart = 0;
+                renderCircle('错误！', 'circle-nogo', '红色不应点击');
+                flowTip('红色不应点击，本次失败', 'red');
+            }
+            setTimeout(next, 600);
+        }
+    });
+
+    renderBest();
     resetUI();
-    updateBestDisplay();
 })();

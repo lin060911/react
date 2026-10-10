@@ -6,70 +6,65 @@
     <link rel="icon" type="image/png" sizes="32x32" href="img/react.png">
     <title>反应测试中心</title>
     <link rel="stylesheet" href="CSS/style.css">
-    <style>
-        body {
-            touch-action: manipulation;
-        }
-        @media (max-width: 600px) {
-            .title { font-size: 26px; }
-        }
-    </style>
 </head>
 <body>
 
-    <h1 class="title">⏱ 反应测试中心</h1>
-    <p class="subtitle">选择下方测试项目开始挑战</p>
+    <header class="page-head">
+        <span class="hero-badge">1GAME · REACTION</span>
+        <h1 class="title" style="margin-top:14px">反应测试中心</h1>
+        <p class="subtitle">Choose your test</p>
+    </header>
 
     <div class="nav-container">
-        <div class="nav-card" onclick="window.open('basic/index.html','_blank')">
+        <div class="nav-card" onclick="location.href='basic/index.html'">
             <div class="nav-icon">🟢</div>
             <div class="nav-title">基础反应测试</div>
             <div class="nav-desc">最基础的反应速度测试</div>
         </div>
 
-        <div class="nav-card" onclick="window.open('F1/index.html','_blank')">
+        <div class="nav-card" onclick="location.href='F1/index.html'">
             <div class="nav-icon">🏁</div>
             <div class="nav-title">F1 发车反应测试</div>
             <div class="nav-desc">模拟 F1 起跑信号灯反应</div>
         </div>
 
-        <div class="nav-card" onclick="window.open('nogo/index.html','_blank')">
+        <div class="nav-card" onclick="location.href='nogo/index.html'">
             <div class="nav-icon">🔴</div>
             <div class="nav-title">抑制反应测试</div>
-            <div class="nav-desc">GO/NO-GO 反应类型抑制测试</div>
+            <div class="nav-desc">GO / NO-GO 反应抑制测试</div>
         </div>
 
-        <div class="nav-card" onclick="window.open('balls/index.html','_blank')">
+        <div class="nav-card" onclick="location.href='balls/index.html'">
             <div class="nav-icon">🎯</div>
             <div class="nav-title">定位反应测试</div>
             <div class="nav-desc">在多个符号中快速识别唯一目标</div>
         </div>
 
-        <div class="nav-card" onclick="window.open('HSline/index.html','_blank')">
+        <div class="nav-card" onclick="location.href='HSline/index.html'">
             <div class="nav-icon">🤕</div>
             <div class="nav-title">头线定位测试</div>
             <div class="nav-desc">模拟 FPS 头线定位点击</div>
         </div>
 
-        <div class="nav-card" onclick="window.open('arrow/index.html','_blank')">
+        <div class="nav-card" onclick="location.href='arrow/index.html'">
             <div class="nav-icon">⬆️</div>
             <div class="nav-title">箭头反应测试</div>
             <div class="nav-desc">根据方向提示快速按键</div>
         </div>
 
-        <div class="nav-card" onclick="window.open('recognize/index.html','_blank')">
+        <div class="nav-card" onclick="location.href='recognize/index.html'">
             <div class="nav-icon">👁️</div>
             <div class="nav-title">辨别反应测试</div>
             <div class="nav-desc">快速找到符合要求的正确图形</div>
         </div>
 
-        <div class="nav-card" onclick="window.open('calcul/index.html','_blank')">
+        <div class="nav-card" onclick="location.href='calcul/index.html'">
             <div class="nav-icon">🧮</div>
             <div class="nav-title">运算反应测试</div>
             <div class="nav-desc">简单计算题与反应测试双线程</div>
         </div>
 
-        <div class="nav-card" onclick="window.open('contact/index.html','_blank')">
+        <div class="nav-card is-off" onclick="location.href='contact/index.html'">
             <div class="nav-icon">🧑‍💻</div>
             <div class="nav-title">敬请期待</div>
             <div class="nav-desc">更多内容开发中</div>
@@ -77,8 +72,19 @@
     </div>
 
     <div class="footer">
-        © 2026 Reaction Lab · L1Nzy
+        © 2026 1game · L1Nzy
+        <button class="link-btn" id="clearBtn">清空本机记录</button>
     </div>
+
+    <script src="js/common.js"></script>
+    <script>
+        document.getElementById('clearBtn').addEventListener('click', function () {
+            if (confirm('确定要清空保存在本机的所有最佳成绩吗？')) {
+                RL.store.clearAll();
+                alert('已清空本机记录');
+            }
+        });
+    </script>
 
 </body>
 </html>

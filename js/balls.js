@@ -1,219 +1,196 @@
-/* balls.js — 定位反应测试 */
+/* ============================================================
+   balls.js — 定位反应测试（在多个符号中点击唯一的 ⨁）
+   计时规则：以「本组符号真正绘制到屏幕」的那一帧为起点。
+   ============================================================ */
 (function () {
-    const gameContainer = document.getElementById('gameContainer');
-    const flowTip = document.getElementById('flowTip');
-    const timer = document.getElementById('timer');
-    const progress = document.getElementById('progress');
+    'use strict';
 
-    const currentAvgEl = document.getElementById('currentAvg');
-    const bestAvgEl = document.getElementById('bestAvg');
+    var box      = RL.$('gameContainer');
+    var timerEl  = RL.$('timer');
+    var flowTip  = RL.Tip(RL.$('flowTip'));
+    var progress = RL.$('progress');
 
-    const MAX_SYMBOLS = 3;
-    const TOTAL_ROUNDS = 15;
-    const SYMBOL_SIZE = 60;
-    const CONTAINER_PADDING = 80;
-    const COOLDOWN_DURATION = 500;
+    var currentAvgEl     = RL.$('currentAvg');
+    var currentFastestEl = RL.$('currentFastest');
+    var currentCountEl   = RL.$('currentCount');
+    var bestAvgEl        = RL.$('bestAvg');
 
-    let gameActive = false;
-    let isCooldown = false;
-    let clickTimes = [];
-    let currentRound = 0;
-    let startTime = 0;
-    let roundTimer = null;
-    let reactionTimer = null;
-    let gameEnded = false;
+    var TOTAL_ROUNDS = 15;
+    var MIN_SYMBOLS = 3;
+    var MAX_SYMBOLS = 5;
+    var COOLDOWN = 420;
 
-    let bestScores = {
-        avg: localStorage.getItem('reactionBestAvg') || '--'
-    };
+    var sw = RL.Stopwatch(timerEl);
 
-    function getRandomPosition(existingPositions = []) {
-        const containerWidth = gameContainer.offsetWidth;
-        const containerHeight = gameContainer.offsetHeight;
-        const minDistance = SYMBOL_SIZE * 5;
-        let x, y;
-        for (let i = 0; i < 100; i++) {
-            x = CONTAINER_PADDING + Math.random() * (containerWidth - 2 * CONTAINER_PADDING);
-            y = CONTAINER_PADDING + Math.random() * (containerHeight - 2 * CONTAINER_PADDING);
-            let overlap = false;
-            for (const pos of existingPositions) {
-                const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
-                if (distance < minDistance) { overlap = true; break; }
-            }
-            if (!overlap) return { x, y };
+    var playing = false;
+    var armed = false;        // 本组符号已上屏，处于可测量状态
+    var cooling = false;
+    var ended = false;
+    var round = 0;
+    var times = [];
+    var pending = null;   // 待执行的下一步定时器
+
+    var bestAvg = RL.store.get('balls.avg', 'reactionBestAvg');
+
+    /* ---------- 渲染 ---------- */
+    function renderCurrent() {
+        currentAvgEl.textContent = RL.fmtMs(RL.avg(times));
+        currentFastestEl.textContent = RL.fmtMs(RL.min(times));
+        currentCountEl.textContent = times.length + ' / ' + TOTAL_ROUNDS;
+    }
+
+    function renderBest() { bestAvgEl.textContent = RL.fmtMs(bestAvg); }
+
+    /* 符号尺寸跟着舞台一起放大（舞台现在占屏幕大部分高度） */
+    function symbolSize() {
+        var w = box.clientWidth || 1180;
+        return Math.round(Math.max(52, Math.min(118, w / 11)));
+    }
+
+    /* ---------- 一轮 ---------- */
+    function clearStage() {
+        var nodes = box.querySelectorAll('.symbol');
+        for (var i = 0; i < nodes.length; i++) nodes[i].remove();
+    }
+
+    function showRound() {
+        if (!playing) return;
+        clearStage();
+        armed = false;
+        sw.reset();
+
+        var size = symbolSize();
+        var count = RL.randInt(MIN_SYMBOLS, MAX_SYMBOLS);
+        var correctIndex = RL.randInt(0, count - 1);
+        var pts = RL.scatter(box, count, size);
+
+        progress.textContent = '第 ' + (round + 1) + ' / ' + TOTAL_ROUNDS + ' 组 · 符号 ' + count + ' 个';
+
+        for (var i = 0; i < count; i++) {
+            var isCorrect = (i === correctIndex);
+            var node = document.createElement('div');
+            node.className = 'symbol';
+            node.dataset.correct = isCorrect ? 'true' : 'false';
+            node.style.width = size + 'px';
+            node.style.height = size + 'px';
+            node.style.left = pts[i].x + 'px';
+            node.style.top = pts[i].y + 'px';
+            node.style.fontSize = Math.round(size * 1.2) + 'px';
+            /* ⨁（正确）/ ⨂（干扰）：U+2A01 / U+2A02。
+               用内层 span 承载字形，方便 CSS 做垂直微调（见 .symbol > span）。 */
+            var glyph = document.createElement('span');
+            glyph.textContent = isCorrect ? '⨁' : '⨂';
+            node.appendChild(glyph);
+            node.addEventListener('click', onSymbolClick);
+            node.addEventListener('touchstart', function (e) {
+                e.preventDefault();
+                onSymbolClick.call(this, e);
+            }, { passive: false });
+            /* 直接插入即可见：不使用淡入 / 缩放动画，避免影响反应计时 */
+            box.appendChild(node);
         }
-        return { x, y };
-    }
 
-    function createSymbol(type, x, y) {
-        const symbol = document.createElement('div');
-        symbol.className = 'symbol-circle';
-        symbol.style.left = `${x}px`;
-        symbol.style.top = `${y}px`;
-        symbol.style.zIndex = type === 'correct' ? '10' : '2';
-        symbol.dataset.type = type;
-        symbol.textContent = type === 'correct' ? '◉' : '◯';
-
-        symbol.addEventListener('click', handleSymbolClick);
-        symbol.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            handleSymbolClick.call(symbol, e);
-        }, { passive: false });
-
-        return symbol;
-    }
-
-    function showSymbols() {
-        if (gameEnded || !gameActive) return;
-        gameContainer.innerHTML = '';
-        const symbolCount = Math.floor(Math.random() * MAX_SYMBOLS) + 3;
-        const correctIndex = Math.floor(Math.random() * symbolCount);
-        progress.textContent = `第 ${currentRound}/${TOTAL_ROUNDS} 轮 | 符号数量: ${symbolCount}`;
-
-        const positions = [];
-        for (let i = 0; i < symbolCount; i++) {
-            const position = getRandomPosition(positions);
-            positions.push(position);
-            const type = i === correctIndex ? 'correct' : 'wrong';
-            const symbol = createSymbol(type, position.x, position.y);
-            gameContainer.appendChild(symbol);
-            setTimeout(() => symbol.classList.add('visible'), i * 10);
-        }
-
-        startTime = performance.now();
-        timer.classList.add('visible');
-        timer.textContent = '0 ms';
-        clearInterval(reactionTimer);
-        reactionTimer = setInterval(updateReactionTimer, 10);
-    }
-
-    function updateReactionTimer() {
-        if (startTime === 0 || gameEnded || isCooldown) return;
-        const elapsed = Math.round(performance.now() - startTime);
-        timer.textContent = `${elapsed} ms`;
-    }
-
-    function handleSymbolClick(e) {
-        e.preventDefault();
-        if (!gameActive || isCooldown || gameEnded || startTime === 0) return;
-
-        const symbol = this;
-        const isCorrect = symbol.dataset.type === 'correct';
-        clearInterval(reactionTimer);
-        timer.classList.remove('visible');
-
-        const allSymbols = document.querySelectorAll('.symbol-circle');
-        allSymbols.forEach(s => {
-            s.classList.add(s.dataset.type === 'correct' ? 'correct' : 'wrong');
+        /* 关键：起点取「符号已上屏」那一帧的时间戳 */
+        RL.afterPaint(function (ts) {
+            if (!playing || ended || armed) return;
+            armed = true;
+            sw.mark(ts || performance.now());
         });
+    }
+
+    function onSymbolClick(e) {
+        e.stopPropagation();
+        if (!playing || cooling || ended) return;
+        if (!armed) return;                 // 未上屏的点击不计入成绩
+
+        var cost = sw.stop();
+        armed = false;
+        var isCorrect = this.dataset.correct === 'true';
+
+        var nodes = box.querySelectorAll('.symbol');
+        for (var i = 0; i < nodes.length; i++) {
+            nodes[i].classList.add(nodes[i].dataset.correct === 'true' ? 'correct' : 'wrong');
+        }
 
         if (isCorrect) {
-            const clickTime = Math.round(performance.now() - startTime);
-            clickTimes.push(clickTime);
-            flowTip.textContent = `正确！用时: ${clickTime} ms`;
-            flowTip.className = 'flow-tip text-green';
-            updateCurrentStats();
-            startCooldown();
-            if (currentRound >= TOTAL_ROUNDS) { endGame(); return; }
-            setTimeout(() => { currentRound++; showSymbols(); }, COOLDOWN_DURATION);
+            times.push(cost);
+            round++;
+            renderCurrent();
+            flowTip('正确！用时 ' + cost + ' ms', 'green');
+            if (round >= TOTAL_ROUNDS) { cooling = true; pending = setTimeout(finish, COOLDOWN); return; }
+            cooldown(function () { showRound(); });
         } else {
-            flowTip.textContent = '错误！请点击正确符号，本轮重新开始';
-            flowTip.className = 'flow-tip text-red';
-            startCooldown();
-            setTimeout(() => showSymbols(), COOLDOWN_DURATION);
+            flowTip('点错了，本组重来', 'red');
+            cooldown(function () { showRound(); });
         }
     }
 
-    function startCooldown() {
-        isCooldown = true;
-        startTime = 0;
-        setTimeout(() => { isCooldown = false; }, COOLDOWN_DURATION);
+    function cooldown(next) {
+        cooling = true;
+        pending = setTimeout(function () {
+            cooling = false;
+            next();
+        }, COOLDOWN);
     }
 
+    /* ---------- 流程 ---------- */
     function startGame() {
-        gameActive = true;
-        isCooldown = false;
-        gameEnded = false;
-        clickTimes = [];
-        currentRound = 1;
-        startTime = 0;
-        clearInterval(reactionTimer);
-        clearTimeout(roundTimer);
-        flowTip.textContent = '测试开始！寻找并点击◉符号';
-        flowTip.className = 'flow-tip text-yellow';
-        timer.classList.remove('visible');
-        updateCurrentStats();
-        setTimeout(() => showSymbols(), 500);
-    }
-
-    function endGame() {
-        gameEnded = true;
-        gameActive = false;
-        updateCurrentStats();
-        checkAndUpdateBestScores();
-        flowTip.textContent = `测试结束！完成全部${TOTAL_ROUNDS}轮测试`;
-        flowTip.className = 'flow-tip text-yellow';
-        gameContainer.innerHTML = '';
-        progress.textContent = `测试完成 | 共${TOTAL_ROUNDS}轮`;
-    }
-
-    function fullReset() {
-        gameActive = false;
-        isCooldown = false;
-        gameEnded = false;
-        clickTimes = [];
-        currentRound = 0;
-        startTime = 0;
-        clearInterval(reactionTimer);
-        clearTimeout(roundTimer);
-        gameContainer.innerHTML = '';
-        timer.classList.remove('visible');
-        timer.textContent = '';
+        clearTimeout(pending);
+        playing = true;
+        armed = false;
+        ended = false;
+        cooling = false;
+        round = 0;
+        times = [];
+        sw.reset();
+        renderCurrent();
+        clearStage();
+        flowTip('测试开始！寻找并点击 ⨁', 'yellow');
         progress.textContent = '';
-        flowTip.textContent = '点击屏幕或按空格键开始测试';
-        flowTip.className = 'flow-tip text-gray';
-        updateCurrentStats();
+        pending = setTimeout(showRound, 420);
     }
 
-    function updateCurrentStats() {
-        const avg = clickTimes.length > 0
-            ? Math.round(clickTimes.reduce((a, b) => a + b, 0) / clickTimes.length)
-            : '--';
-        currentAvgEl.textContent = avg === '--' ? '-- ms' : `${avg} ms`;
+    function abort(reason) {
+        clearTimeout(pending);
+        playing = false;
+        armed = false;
+        cooling = false;
+        ended = true;
+        sw.reset();
+        clearStage();
+        progress.textContent = '';
+        flowTip(reason + ' · 按空格或点击屏幕重新开始', 'red');
     }
 
-    function updateBestStats() {
-        bestAvgEl.textContent = bestScores.avg === '--' ? '-- ms' : `${bestScores.avg} ms`;
+    function finish() {
+        playing = false;
+        armed = false;
+        ended = true;
+        cooling = false;      // 必须解锁，否则结束后点击 / 空格永远无法重开
+        clearStage();
+        sw.reset();
+
+        var a = RL.avg(times);
+        bestAvg = RL.betterLower(bestAvg, a);
+        RL.store.set('balls.avg', Math.round(bestAvg));
+        renderBest();
+
+        progress.textContent = '测试完成 · 共 ' + TOTAL_ROUNDS + ' 组';
+        flowTip('测试结束！平均 ' + Math.round(a) + ' ms · 按空格或点击屏幕重来', 'yellow');
     }
 
-    function checkAndUpdateBestScores() {
-        if (clickTimes.length < TOTAL_ROUNDS) return;
-        const currentAvg = Math.round(clickTimes.reduce((a, b) => a + b, 0) / clickTimes.length);
-        if (bestScores.avg === '--' || currentAvg < bestScores.avg) {
-            bestScores.avg = currentAvg;
-            localStorage.setItem('reactionBestAvg', currentAvg);
-        }
-        updateBestStats();
-    }
+    /* ---------- 失焦保护 ---------- */
+    RL.onFocusLost(function () {
+        if (!playing && !cooling) return;
+        abort('检测到切换窗口 · 本次作废');
+    });
 
-    function handleKeydown(e) {
-        if (e.code === 'Space') {
-            e.preventDefault();
-            if (!gameActive || gameEnded) { fullReset(); startGame(); }
-        }
-    }
+    RL.onActivate(function () {
+        if (cooling) return;
+        if (playing) return;
+        startGame();
+    });
 
-    function handleInteraction(e) {
-        e.preventDefault();
-        if (isCooldown) return;
-        if (!gameActive || gameEnded) { fullReset(); startGame(); }
-    }
-
-    document.addEventListener('keydown', handleKeydown);
-    document.addEventListener('click', handleInteraction);
-    document.addEventListener('touchstart', handleInteraction, { passive: false });
-    document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-
-    updateCurrentStats();
-    updateBestStats();
+    renderCurrent();
+    renderBest();
 })();

@@ -1,233 +1,185 @@
-/* F1.js — F1 发车反应测试 */
+/* ============================================================
+   F1.js — F1 发车反应测试（五盏红灯依次亮起 → 熄灭瞬间发车）
+   ============================================================ */
 (function () {
-    const lights = document.querySelectorAll('.f1-light');
-    const result = document.getElementById('result');
-    const timer = document.getElementById('timer');
-    const bestRecord = document.getElementById('bestRecord');
-    const tip = document.getElementById('tip');
-    const greenModeToggle = document.getElementById('greenModeToggle');
-    const soundModeToggle = document.getElementById('soundModeToggle');
-    const modeSwitchGroup = document.getElementById('modeSwitchGroup');
+    'use strict';
 
-    let testActive = false;
-    let isCooldown = false;
-    let startTime = 0;
-    let bestTime = null;
-    let lightTimer = null;
-    let goTimer = null;
-    let reactionTimer = null;
-    const HUMAN_MIN_REACTION = 100;
-    let isTouchEvent = false;
-    const TOUCH_DELAY = 50;
-    let isGreenMode = false;
-    let isSoundMode = false;
+    var lights    = document.querySelectorAll('.f1-light');
+    var resultEl  = RL.$('result');
+    var timerEl   = RL.$('timer');
+    var flowTip   = RL.Tip(RL.$('flowTip'));
+    var bestEl    = RL.$('bestRecord');
+    var greenMode = RL.$('greenModeToggle');
+    var soundMode = RL.$('soundModeToggle');
 
-    let lastTouchTime = -Infinity;
-    const TOUCH_THROTTLE = 250;
+    var sw = RL.Stopwatch(timerEl);
 
-    let audioContext;
-    function initAudio() {
-        if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    var LIGHT_INTERVAL = 800;      // 每盏灯间隔
+    var MIN_GO_DELAY = 500;        // 全亮后随机等待
+    var MAX_GO_DELAY = 3000;
+    var HUMAN_MIN_REACTION = 100;  // 低于此值判定抢跑
+    var COOLDOWN = 1500;
+
+    var running = false;    // 灯序进行中
+    var measured = false;   // 已进入可测量状态（发车画面确实上屏）
+    var goStamp = 0;        // 发车时刻（0 表示尚未发车）
+    var cooling = false;
+    var lightTimer = null;
+    var goTimer = null;
+    var audioCtx = null;
+
+    var best = RL.store.get('f1.best');
+
+    /* ---------- 渲染 ---------- */
+    function renderResult(text, tone) {
+        resultEl.textContent = text;
+        resultEl.className = 'result-big' + (tone ? ' text-' + tone : '');
+    }
+
+    function renderBest() {
+        bestEl.textContent = '最快成绩：' + RL.fmtMs(best);
+    }
+
+    function clearLights() {
+        for (var i = 0; i < lights.length; i++) {
+            lights[i].className = 'f1-light';
         }
     }
 
-    function playSound(type) {
-        if (!isSoundMode) return;
-        initAudio();
-        const oscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-
-        if (type === 'light') {
-            oscillator.type = 'sawtooth';
-            oscillator.frequency.setValueAtTime(220, audioContext.currentTime);
-            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
-            oscillator.start();
-            oscillator.stop(audioContext.currentTime + 0.1);
-        } else if (type === 'go') {
-            oscillator.type = 'sawtooth';
-            oscillator.frequency.setValueAtTime(990, audioContext.currentTime);
-            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.4);
-            oscillator.start();
-            oscillator.stop(audioContext.currentTime + 0.8);
-        }
+    /* 规则文字直接写在规则卡里，这里只按模式更新舞台底部提示 */
+    function renderTip() {
+        flowTip(greenMode.checked
+            ? '红灯全亮后变绿 · 变绿瞬间点击'
+            : '红灯全亮后熄灭 · 熄灭瞬间点击', 'gray');
     }
 
-    modeSwitchGroup.addEventListener('click', function (e) {
-        e.stopPropagation();
-        const target = e.target;
-        if (target.closest('.mode-switch-item:nth-child(1)')) {
-            greenModeToggle.checked = !greenModeToggle.checked;
-            toggleGreenMode(greenModeToggle.checked);
-        } else if (target.closest('.mode-switch-item:nth-child(2)')) {
-            soundModeToggle.checked = !soundModeToggle.checked;
-            isSoundMode = soundModeToggle.checked;
-        }
-    });
-
-    document.querySelectorAll('.switch-label, .switch, .slider').forEach(element => {
-        element.addEventListener('click', function (e) { e.stopPropagation(); });
-    });
-
-    greenModeToggle.addEventListener('change', function (e) {
-        e.stopPropagation();
-        toggleGreenMode(this.checked);
-    });
-
-    soundModeToggle.addEventListener('change', function (e) {
-        e.stopPropagation();
-        isSoundMode = this.checked;
-    });
-
-    function toggleGreenMode(enabled) {
-        isGreenMode = enabled;
-        if (isGreenMode) {
-            tip.innerHTML = "<strong>规则：</strong>来自真实F1发车信号灯规则<br>5盏红灯依次亮起 → 随机0.5s-3.0s红灯变绿 → 变绿瞬间点击<br>提前发车罚时 | 人类极限反应：≥100ms";
-        } else {
-            tip.innerHTML = "<strong>规则：</strong>来自真实F1发车信号灯规则<br>5盏红灯依次亮起 → 随机0.5s-3.0s红灯熄灭 → 熄灭瞬间点击<br>提前发车罚时 | 人类极限反应：≥100ms";
-        }
+    /* ---------- 声音 ---------- */
+    function beep(freq, dur, vol, type) {
+        if (!soundMode.checked) return;
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            var osc = audioCtx.createOscillator();
+            var gain = audioCtx.createGain();
+            osc.type = type || 'sawtooth';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + dur);
+        } catch (e) { /* ignore */ }
     }
 
-    function fullReset() {
-        testActive = false;
-        startTime = 0;
+    /* ---------- 流程 ---------- */
+    function reset() {
         clearInterval(lightTimer);
         clearTimeout(goTimer);
-        clearInterval(reactionTimer);
-        lights.forEach(light => {
-            light.classList.remove('active');
-            light.classList.remove('green');
-        });
-        timer.classList.remove('visible');
-        timer.textContent = '';
-    }
-
-    function updateBestRecord() {
-        bestRecord.textContent = bestTime === null ? '最快成绩：-- ms' : `最快成绩：${bestTime} ms`;
-    }
-
-    function startCooldown() {
-        isCooldown = true;
-        setTimeout(() => {
-            isCooldown = false;
-            result.textContent = '点击屏幕或按[空格键]开始';
-            result.className = 'result text-gray';
-        }, 2000);
-    }
-
-    function updateReactionTimer() {
-        if (startTime === 0) return;
-        const currentTime = performance.now();
-        const elapsed = Math.round(currentTime - startTime);
-        timer.textContent = `${elapsed} ms`;
+        clearLights();
+        sw.reset();
+        running = false;
+        measured = false;
+        goStamp = 0;
     }
 
     function startTest() {
-        fullReset();
-        testActive = true;
-        result.textContent = isGreenMode ? '等待红灯变绿' : '等待所有红灯熄灭';
-        result.className = 'result text-yellow';
-        timer.classList.remove('visible');
+        reset();
+        running = true;
+        renderResult(greenMode.checked ? '等待红灯变绿' : '等待红灯熄灭', 'yellow');
+        flowTip('集中注意力，盯住信号灯', 'gray');
 
-        let lightIndex = 0;
-        lightTimer = setInterval(() => {
-            if (lightIndex < 5) {
-                lights[lightIndex].classList.add('active');
-                playSound('light');
-                lightIndex++;
-            } else {
-                clearInterval(lightTimer);
-                const randomDelay = Math.random() * 2500 + 500;
-                goTimer = setTimeout(() => {
-                    if (isGreenMode) {
-                        lights.forEach(l => { l.classList.remove('active'); l.classList.add('green'); });
-                    } else {
-                        lights.forEach(l => l.classList.remove('active'));
-                    }
-                    playSound('go');
-                    startTime = performance.now();
-                    result.textContent = '发车！';
-                    result.className = 'result text-green';
-                    timer.classList.add('visible');
-                    timer.textContent = '0 ms';
-                    clearInterval(reactionTimer);
-                    reactionTimer = setInterval(updateReactionTimer, 10);
-                }, randomDelay);
+        var i = 0;
+        lightTimer = setInterval(function () {
+            if (i < lights.length) {
+                lights[i].classList.add('active');
+                beep(220, 0.1, 0.08);
+                i++;
+                return;
             }
-        }, 800);
+            clearInterval(lightTimer);
+            goTimer = setTimeout(function () {
+                if (!running) return;
+                if (greenMode.checked) {
+                    for (var k = 0; k < lights.length; k++) {
+                        lights[k].classList.remove('active');
+                        lights[k].classList.add('green');
+                    }
+                } else {
+                    clearLights();
+                }
+                beep(990, 0.35, 0.16);
+                renderResult('发车！', 'green');
+                /* 关键：等发车画面真正上屏的那一帧再取起点，
+                   否则起点会早于人眼看到信号约一帧，成绩系统性偏快。 */
+                RL.afterPaint(function (ts) {
+                    if (!running || goStamp !== 0) return;
+                    goStamp = ts || performance.now();
+                    measured = true;
+                    sw.mark(goStamp);
+                });
+            }, RL.rand(MIN_GO_DELAY, MAX_GO_DELAY));
+        }, LIGHT_INTERVAL);
     }
 
-    function handleInteraction(e) {
-        if (e.target && e.target.closest && e.target.closest('.mode-switch-group')) return;
-        e.preventDefault();
-        if (isCooldown) return;
-        isTouchEvent = e.type === 'touchstart';
-
-        if (isTouchEvent) {
-            const now = performance.now();
-            if (now - lastTouchTime < TOUCH_THROTTLE) return;
-            lastTouchTime = now;
-        }
-
-        if (!testActive) {
-            if (isTouchEvent) {
-                setTimeout(() => startTest(), TOUCH_DELAY);
-            } else {
-                startTest();
-            }
+    function judge() {
+        /* 画面还没上屏就点击 = 抢跑 */
+        if (!measured) {
+            reset();
+            renderResult('提前发车 · 判罚', 'red');
+            flowTip('信号未出现就点击，本次抢跑', 'red');
+            cooldown();
             return;
         }
 
-        const handleJudge = () => {
-            const currentTime = performance.now();
-            const start = startTime;
-            clearInterval(reactionTimer);
-            timer.classList.remove('visible');
-            timer.textContent = '';
-            lights.forEach(l => { l.classList.remove('active'); l.classList.remove('green'); });
-            fullReset();
+        var reaction = Math.round(performance.now() - goStamp);
+        sw.stop();
+        clearInterval(lightTimer);
+        clearTimeout(goTimer);
+        clearLights();
+        running = false;
+        measured = false;
+        goStamp = 0;
 
-            if (start === 0) {
-                result.textContent = '提前发车将被罚时';
-                result.className = 'result text-red';
-                startCooldown();
-                return;
-            }
-
-            const reaction = Math.round(currentTime - start);
-            if (reaction < HUMAN_MIN_REACTION) {
-                result.textContent = '❌ 无效成绩';
-                result.className = 'result text-red';
-            } else {
-                if (bestTime === null || reaction < bestTime) {
-                    bestTime = reaction;
-                    updateBestRecord();
-                }
-                result.textContent = `${reaction} ms`;
-                result.className = 'result text-green';
-            }
-            startCooldown();
-        };
-
-        if (isTouchEvent) {
-            setTimeout(handleJudge, TOUCH_DELAY);
+        if (reaction < HUMAN_MIN_REACTION) {
+            renderResult('❌ 无效成绩（< 100 ms）', 'red');
+            flowTip('低于人类极限反应，本次不计入成绩', 'red');
         } else {
-            handleJudge();
+            renderResult(reaction + ' ms', 'green');
+            flowTip('发车反应：' + reaction + ' ms', 'green');
+            best = RL.betterLower(best, reaction);
+            RL.store.set('f1.best', best);
+            renderBest();
         }
+        cooldown();
     }
 
-    document.addEventListener('click', handleInteraction);
-    document.addEventListener('touchstart', handleInteraction, { passive: false });
-    document.addEventListener('keydown', (e) => {
-        if (e.code !== 'Space' || e.repeat) return;
-        handleInteraction(e);
-    });
-    document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+    function cooldown() {
+        cooling = true;
+        setTimeout(function () {
+            cooling = false;
+            renderResult('点击屏幕或按空格键开始', 'gray');
+            flowTip(greenMode.checked ? '红灯全亮后变绿 · 变绿瞬间点击'
+                                      : '红灯全亮后熄灭 · 熄灭瞬间点击', 'gray');
+        }, COOLDOWN);
+    }
 
-    result.textContent = '点击屏幕或按[空格键]开始';
-    updateBestRecord();
+    /* ---------- 失焦保护：切走即作废本次 ---------- */
+    RL.onFocusLost(function () {
+        if (!running && !cooling) return;
+        reset();
+        cooling = false;
+        renderResult('检测到切换窗口 · 本次作废', 'red');
+        flowTip('离开页面会严重影响计时，请重新开始', 'red');
+    });
+
+    /* ---------- 交互 ---------- */
+    RL.onActivate(function () {
+        if (cooling) return;
+        if (!running) { startTest(); return; }
+        judge();
+    });
+
+    greenMode.addEventListener('change', renderTip);
+    renderTip();
+    renderBest();
 })();

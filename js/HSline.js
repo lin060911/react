@@ -1,189 +1,172 @@
-/* HSline.js — 头线定位测试 */
+/* ============================================================
+   HSline.js — 头线定位测试（FPS 头线快速点击）
+   计时规则：以「小球真正绘制到屏幕」的那一帧为起点，
+             以玩家点中小球为终点，避免把渲染延迟算进成绩。
+   ============================================================ */
 (function () {
-    const targetBall = document.getElementById('targetBall');
-    const targetContainer = document.getElementById('targetContainer');
-    const flowTip = document.getElementById('flowTip');
-    const timer = document.getElementById('timer');
+    'use strict';
 
-    const currentFastestEl = document.getElementById('currentFastest');
-    const currentAvgEl = document.getElementById('currentAvg');
-    const currentCorrectEl = document.getElementById('currentCorrect');
-    const bestFastestEl = document.getElementById('bestFastest');
-    const bestAvgEl = document.getElementById('bestAvg');
-    const bestCorrectEl = document.getElementById('bestCorrect');
+    var ball     = RL.$('targetBall');
+    var box      = RL.$('targetContainer');
+    var timerEl  = RL.$('timer');
+    var flowTip  = RL.Tip(RL.$('flowTip'));
+    var progress = RL.$('progress');
 
-    const MIN_DELAY = 100;
-    const MAX_DELAY = 500;
-    const TIMEOUT_DURATION = 1000;
-    const BALL_SIZE = 30;
-    const CONTAINER_PADDING = 50;
+    var currentFastestEl = RL.$('currentFastest');
+    var currentAvgEl     = RL.$('currentAvg');
+    var currentCorrectEl = RL.$('currentCorrect');
+    var bestFastestEl    = RL.$('bestFastest');
+    var bestAvgEl        = RL.$('bestAvg');
+    var bestCorrectEl    = RL.$('bestCorrect');
 
-    let testActive = false;
-    let isCooldown = false;
-    let clickTimes = [];
-    let startTime = 0;
-    let ballTimer = null;
-    let reactionTimer = null;
-    let testEnded = false;
-    let timeoutTimer = null;
+    var START_DELAY = 500;    // 开始后小球首次出现的延时
+    var TIMEOUT = 1000;
+    var COOLDOWN = 260;
+    var PADDING = 40;
 
-    let bestScores = {
-        fastest: localStorage.getItem('mouseBestFastest') || '--',
-        avg: localStorage.getItem('mouseBestAvg') || '--',
-        correct: localStorage.getItem('mouseBestCorrect') || 0
+    var sw = RL.Stopwatch(timerEl);
+
+    var playing = false;      // 小球在场，可被点击
+    var running = false;      // 整场测试进行中（含小球之间的间隔）
+    var armed = false;        // 小球已上屏，处于可测量状态
+    var ended = false;        // 本次测试已结束
+    var times = [];
+    var ballTimer = null;
+    var timeoutTimer = null;
+
+    var best = {
+        fastest: RL.store.get('hs.fastest', 'mouseBestFastest'),
+        avg: RL.store.get('hs.avg', 'mouseBestAvg'),
+        correct: RL.store.get('hs.correct', 'mouseBestCorrect') || 0
     };
 
-    function getRandomXPosition() {
-        const containerWidth = targetContainer.offsetWidth;
-        return CONTAINER_PADDING + Math.random() * (containerWidth - 2 * CONTAINER_PADDING);
+    /* ---------- 渲染 ---------- */
+    function renderCurrent() {
+        currentFastestEl.textContent = RL.fmtMs(RL.min(times));
+        currentAvgEl.textContent = RL.fmtMs(RL.avg(times));
+        currentCorrectEl.textContent = String(times.length);
+        progress.textContent = times.length ? ('已命中 ' + times.length + ' 次') : '';
     }
 
-    function fullReset() {
-        testActive = false;
-        isCooldown = false;
-        testEnded = false;
-        clickTimes = [];
-        startTime = 0;
+    function renderBest() {
+        bestFastestEl.textContent = RL.fmtMs(best.fastest);
+        bestAvgEl.textContent = RL.fmtMs(best.avg);
+        bestCorrectEl.textContent = String(best.correct || 0);
+    }
+
+    function saveBest() {
+        var f = RL.min(times), a = RL.avg(times);
+        if (f === null) return;
+        best.fastest = RL.betterLower(best.fastest, f);
+        best.avg = RL.betterLower(best.avg, a);
+        best.correct = RL.betterHigher(best.correct, times.length);
+        RL.store.set('hs.fastest', Math.round(best.fastest));
+        RL.store.set('hs.avg', Math.round(best.avg));
+        RL.store.set('hs.correct', best.correct);
+        renderBest();
+    }
+
+    /* ---------- 流程 ---------- */
+    function clearTimers() {
         clearTimeout(ballTimer);
-        clearInterval(reactionTimer);
         clearTimeout(timeoutTimer);
-        targetBall.className = 'target-ball';
-        timer.classList.remove('visible');
-        timer.textContent = '';
-        flowTip.textContent = '点击屏幕或按空格键开始测试';
-        flowTip.className = 'flow-tip text-gray';
-        updateCurrentStats();
     }
 
-    function updateCurrentStats() {
-        const fastest = clickTimes.length > 0 ? Math.min(...clickTimes) : '--';
-        const avg = clickTimes.length > 0 ? Math.round(clickTimes.reduce((a, b) => a + b, 0) / clickTimes.length) : '--';
-        const correct = clickTimes.length;
-        currentFastestEl.textContent = fastest === '--' ? '-- ms' : `${fastest} ms`;
-        currentAvgEl.textContent = avg === '--' ? '-- ms' : `${avg} ms`;
-        currentCorrectEl.textContent = correct;
+    /* 让小球在下一帧出现，并把那一帧作为计时起点 */
+    function showBall() {
+        if (ended || !running) return;
+        armed = false;
+        playing = true;
+        var x = RL.rand(PADDING, Math.max(PADDING, box.clientWidth - PADDING));
+        ball.style.left = x + 'px';
+        ball.classList.remove('hidden');
+        flowTip('快速点击目标小球！', 'yellow');
+
+        RL.afterPaint(function (ts) {
+            if (ended || !playing) return;
+            armed = true;
+            var start = ts || performance.now();
+            sw.mark(start);
+            clearTimeout(timeoutTimer);
+            timeoutTimer = setTimeout(timeout, TIMEOUT);
+        });
     }
 
-    function updateBestStats() {
-        bestFastestEl.textContent = bestScores.fastest === '--' ? '-- ms' : `${bestScores.fastest} ms`;
-        bestAvgEl.textContent = bestScores.avg === '--' ? '-- ms' : `${bestScores.avg} ms`;
-        bestCorrectEl.textContent = bestScores.correct;
-    }
-
-    function checkAndUpdateBestScores() {
-        if (clickTimes.length === 0) return;
-        const currentFastest = Math.min(...clickTimes);
-        const currentAvg = Math.round(clickTimes.reduce((a, b) => a + b, 0) / clickTimes.length);
-        const currentCorrect = clickTimes.length;
-
-        if (bestScores.fastest === '--' || currentFastest < bestScores.fastest) {
-            bestScores.fastest = currentFastest;
-            localStorage.setItem('mouseBestFastest', currentFastest);
-        }
-        if (bestScores.avg === '--' || currentAvg < bestScores.avg) {
-            bestScores.avg = currentAvg;
-            localStorage.setItem('mouseBestAvg', currentAvg);
-        }
-        if (currentCorrect > bestScores.correct) {
-            bestScores.correct = currentCorrect;
-            localStorage.setItem('mouseBestCorrect', currentCorrect);
-        }
-        updateBestStats();
-    }
-
-    function handleTimeout() {
-        if (testEnded || !testActive) return;
-        clearInterval(reactionTimer);
-        clearTimeout(timeoutTimer);
-        timer.classList.remove('visible');
-        testEnded = true;
-        flowTip.textContent = `超时！1000ms内未点击，测试结束 | 正确次数: ${clickTimes.length}`;
-        flowTip.className = 'flow-tip text-red';
-        updateCurrentStats();
-        targetBall.className = 'target-ball';
-        startTime = 0;
-        startCooldown();
-    }
-
-    function showTargetBall() {
-        if (testEnded) return;
-        const randomX = getRandomXPosition();
-        targetBall.style.left = `${randomX}px`;
-        targetBall.className = 'target-ball visible';
-        startTime = performance.now();
-        flowTip.textContent = '快速点击目标小球！';
-        flowTip.className = 'flow-tip text-yellow';
-        timer.classList.add('visible');
-        timer.textContent = '0 ms';
-        clearInterval(reactionTimer);
-        reactionTimer = setInterval(updateReactionTimer, 10);
-        clearTimeout(timeoutTimer);
-        timeoutTimer = setTimeout(handleTimeout, TIMEOUT_DURATION);
-    }
-
-    function updateReactionTimer() {
-        if (startTime === 0 || testEnded) return;
-        timer.textContent = `${Math.round(performance.now() - startTime)} ms`;
-    }
-
-    function startCooldown() {
-        isCooldown = true;
-        setTimeout(() => {
-            isCooldown = false;
-            if (!testEnded) {
-                ballTimer = setTimeout(showTargetBall, Math.random() * (MAX_DELAY - MIN_DELAY) + MIN_DELAY);
-            } else {
-                checkAndUpdateBestScores();
-                flowTip.textContent = `${flowTip.textContent} | 按空格键或点击屏幕重新开始`;
-                targetBall.className = 'target-ball';
-            }
-        }, 300);
+    function timeout() {
+        if (ended || !running) return;
+        if (!armed) return;                 // 小球还没上屏，不计超时
+        clearTimers();
+        sw.stop();
+        armed = false;
+        playing = false;
+        ball.classList.add('hidden');
+        endGame('超时！' + TIMEOUT + ' ms 内未点击');
     }
 
     function startTest() {
-        fullReset();
-        testActive = true;
-        flowTip.textContent = '准备开始...';
-        flowTip.className = 'flow-tip text-yellow';
-        ballTimer = setTimeout(showTargetBall, 500);
+        clearTimers();
+        ball.classList.add('hidden');
+        sw.reset();
+        times = [];
+        armed = false;
+        playing = false;
+        running = true;
+        ended = false;
+        renderCurrent();
+        flowTip('准备开始…', 'yellow');
+        ballTimer = setTimeout(showBall, START_DELAY);
     }
 
-    function handleBallClick(e) {
+    function endGame(reason) {
+        playing = false;
+        running = false;
+        armed = false;
+        ended = true;
+        clearTimers();
+        sw.reset();
+        ball.classList.add('hidden');
+        saveBest();
+        flowTip(reason + ' · 命中 ' + times.length + ' 次 · 按空格或点击屏幕重来', 'red');
+    }
+
+    /* ---------- 交互 ---------- */
+    function hit(e) {
         e.preventDefault();
-        if (!testActive || isCooldown || startTime === 0 || testEnded) return;
+        e.stopPropagation();
+        if (ended || !armed) return;        // 未上屏的点击不计入成绩
+
+        var cost = sw.stop();
         clearTimeout(timeoutTimer);
-        clearInterval(reactionTimer);
-        timer.classList.remove('visible');
-        const clickTime = Math.round(performance.now() - startTime);
-        clickTimes.push(clickTime);
-        flowTip.textContent = `点击耗时: ${clickTime} ms`;
-        flowTip.className = 'flow-tip text-green';
-        updateCurrentStats();
-        targetBall.className = 'target-ball';
-        startTime = 0;
-        startCooldown();
+        armed = false;
+        playing = false;
+        times.push(cost);
+        ball.classList.add('hidden');
+        renderCurrent();
+        flowTip('命中！' + cost + ' ms', 'green');
+
+        ballTimer = setTimeout(showBall, COOLDOWN);
     }
 
-    function handleKeydown(e) {
-        if (e.code === 'Space') {
-            e.preventDefault();
-            if (!testActive || testEnded) startTest();
-        }
-    }
+    ball.addEventListener('click', hit);
+    ball.addEventListener('touchstart', hit, { passive: false });
 
-    function handleInteraction(e) {
-        e.preventDefault();
-        if (isCooldown) return;
-        if (!testActive || testEnded) startTest();
-    }
+    /* ---------- 失焦保护 ---------- */
+    RL.onFocusLost(function () {
+        if (!running) return;
+        clearTimers();
+        sw.reset();
+        armed = false;
+        playing = false;
+        ball.classList.add('hidden');
+        saveBest();
+        endGame('检测到切换窗口 · 本次作废');
+    });
 
-    document.addEventListener('keydown', handleKeydown);
-    document.addEventListener('click', handleInteraction);
-    document.addEventListener('touchstart', handleInteraction, { passive: false });
-    document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-    targetBall.addEventListener('click', handleBallClick);
-    targetBall.addEventListener('touchstart', (e) => { e.preventDefault(); handleBallClick(e); }, { passive: false });
+    RL.onActivate(function () {
+        if (running) return;
+        startTest();
+    });
 
-    updateCurrentStats();
-    updateBestStats();
+    renderCurrent();
+    renderBest();
 })();
